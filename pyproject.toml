@@ -1,0 +1,22 @@
+[project]
+name = "msa-workbench"
+version = "0.1.0"
+authors = [
+  { name="Gemini", email="gemini@google.com" },
+]
+description = "A desktop application for Measurement System Analysis (MSA)."
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/user/repo.git"
+"Bug Tracker" = "https://github.com/user/repo.git/issues"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+packages = {find = {where = ["src"]}}

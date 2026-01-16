@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+.venv/
+venv/
+ENV/
+
+# PyInstaller
+*.spec
+dist/
+build/
+
+# IDE specific
+.vscode/
+.idea/
+
+# Other
+.DS_Store
+*.local
+*.log

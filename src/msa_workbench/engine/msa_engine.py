@@ -28,6 +28,7 @@ class MSAConfig:
     lsl: Optional[float] = None
     usl: Optional[float] = None
     tolerance: Optional[float] = None
+    model_type: str = "crossed"
 
     def __post_init__(self):
         n_factors = len(self.factor_cols)
@@ -40,6 +41,9 @@ class MSAConfig:
         if self.operator_col is None:
             others = [f for f in self.factor_cols if f != self.part_col]
             self.operator_col = others[0] if others else None
+        
+        if self.model_type == "crossed" and n_factors > 3:
+            raise ValueError("Crossed models are only supported for 2 or 3 factors.")
 
     @property
     def tolerance_value(self) -> Optional[float]:
@@ -102,16 +106,19 @@ class MSAResult:
 
 def run_crossed_msa(df: pd.DataFrame, config: MSAConfig) -> MSAResult:
     """
-    Dispatch to the appropriate implementation based on number of factors.
+    Dispatch to the appropriate implementation based on number of factors and model type.
     """
     n_factors = len(config.factor_cols)
 
+    if config.model_type == 'main effects':
+        return _run_main_effects_msa(df, config)
+    
     if n_factors == 2:
         return _run_crossed_msa_2factor(df, config)
     elif n_factors == 3:
         return _run_crossed_msa_3factor(df, config)
-    else:
-        return _run_crossed_msa_mixed(df, config)
+    else: # 4 factors
+        return _run_main_effects_msa(df, config)
 
 
 # =========================
@@ -293,11 +300,53 @@ def _run_crossed_msa_3factor(df: pd.DataFrame, config: MSAConfig) -> MSAResult:
     return _build_result_object(df, config, vc_map, anova_rows, model.resid, warnings)
 
 
+def _run_main_effects_msa(df: pd.DataFrame, config: MSAConfig) -> MSAResult:
+    warnings: List[str] = ["Running Main Effects Model."]
+    _validate_dataframe(df, config, warnings)
+
+    y = config.response_col
+    factors = config.factor_cols
+    
+    formula = f'Q("{y}") ~ {" + ".join([f"C(Q(\'{f}\'))" for f in factors])}'
+    
+    model = smf.ols(formula, data=df).fit()
+    anova = anova_lm(model, typ=1)
+
+    # Correct F-Tests
+    ms_res, df_res = _get_ms_df(anova, "Residual")
+    for factor in factors:
+        term = _find_term(anova, factor)
+        ms_fac, df_fac = _get_ms_df(anova, term)
+        _update_anova_f_test(anova, term, ms_fac, ms_res, df_fac, df_res)
+
+    anova_clean = _clean_anova_index(anova)
+    anova_rows = _build_anova_rows(anova_clean)
+
+    # Variance Components
+    vc_map = {"Repeatability": max(ms_res, 0.0)}
+    n_total = len(df)
+    
+    # Check for unbalance
+    reps_per_cell = df.groupby(factors)[y].count()
+    if reps_per_cell.nunique() > 1:
+        warnings.append(f"Unbalanced design ({reps_per_cell.mean():.2f} reps/cell). Results may be approximate.")
+
+    for factor in factors:
+        term = _find_term(anova, factor)
+        ms_fac, df_fac = _get_ms_df(anova, term)
+        
+        n_prime = n_total / df[factor].nunique()
+
+        sig2_fac = max((ms_fac - ms_res) / n_prime, 0.0)
+        vc_map[factor] = sig2_fac
+
+    return _build_result_object(df, config, vc_map, anova_rows, model.resid, warnings)
+
+
 def _run_crossed_msa_mixed(df: pd.DataFrame, config: MSAConfig) -> MSAResult:
     warnings: List[str] = ["Using Iterative Mixed Model (4+ factors). Convergence may vary."]
     _validate_dataframe(df, config, warnings)
     raise NotImplementedError("4+ factor support is experimental. Please stick to 2 or 3 factors.")
-
 
 # =========================
 # HELPER FUNCTIONS
@@ -393,7 +442,12 @@ def _build_result_object(df, config, vc_map, anova_rows, resid, warnings):
 
     sig2_repeat = vc_map.get("Repeatability", 0.0)
     sig2_part = vc_map.get(part, 0.0)
-    sig2_repro = sum(v for k, v in vc_map.items() if k != part and k != "Repeatability")
+    
+    if config.model_type == 'crossed':
+        sig2_repro = sum(v for k, v in vc_map.items() if k != part and k != "Repeatability")
+    else: # main effects
+        repro_factors = [f for f in config.factor_cols if f != part]
+        sig2_repro = sum(vc_map.get(f, 0.0) for f in repro_factors)
 
     sig2_gage = sig2_repeat + sig2_repro
     sig2_total = sig2_gage + sig2_part
@@ -420,8 +474,12 @@ def _build_result_object(df, config, vc_map, anova_rows, resid, warnings):
         "Repeatability", sig2_repeat, sigmas["Repeatability"], 6.0 * sigmas["Repeatability"],
         get_pct_contrib(sig2_repeat), get_pct_sv(sigmas["Repeatability"]), get_pct_tol(sigmas["Repeatability"])
     ))
+    
+    if config.model_type == 'crossed':
+        repro_keys = [k for k in vc_map.keys() if k != part and k != "Repeatability"]
+    else: # main effects
+        repro_keys = [f for f in config.factor_cols if f != part]
 
-    repro_keys = [k for k in vc_map.keys() if k != part and k != "Repeatability"]
     for k in repro_keys:
         vc_rows.append(VarianceComponentRow(
             f"Reproducibility ({k})", vc_map[k], sigmas[k], 6.0 * sigmas[k],

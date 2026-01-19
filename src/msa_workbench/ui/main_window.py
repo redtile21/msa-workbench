@@ -87,6 +87,10 @@ class MainWindow(QMainWindow):
         self.config_layout.addRow("", self.factors_label)
         self.selected_factors = []
 
+        self.model_type_combo = QComboBox()
+        self.model_type_combo.addItems(["Crossed", "Main Effects"])
+        self.config_layout.addRow("Model Type:", self.model_type_combo)
+
         self.part_combo = QComboBox()
         self.config_layout.addRow("Part:", self.part_combo)
 
@@ -207,6 +211,12 @@ class MainWindow(QMainWindow):
             self.operator_combo.clear()
             self.operator_combo.addItems(self.selected_factors)
 
+            if len(self.selected_factors) >= 4:
+                self.model_type_combo.setCurrentText("Main Effects")
+                self.model_type_combo.setEnabled(False)
+            else:
+                self.model_type_combo.setEnabled(True)
+
     def run_analysis(self):
         if self.df is None:
             return
@@ -223,7 +233,8 @@ class MainWindow(QMainWindow):
                 operator_col=self.operator_combo.currentText(),
                 lsl=lsl,
                 usl=usl,
-                tolerance=tolerance
+                tolerance=tolerance,
+                model_type=self.model_type_combo.currentText().lower()
             )
             self.result = run_crossed_msa(self.df.copy(), config)
             self._update_results_ui()

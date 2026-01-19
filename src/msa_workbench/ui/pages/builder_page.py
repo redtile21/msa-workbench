@@ -59,344 +59,157 @@ class BuilderPage(QWidget):
         # Preview
         self._create_preview_widgets(preview_layout)
         
-                controls_layout.addStretch()
-        
-        
-        
-                self._set_default_factors()
-        
-        
-        
-            def _create_factor_widgets(self, layout):
-        
-                group = QGroupBox("Factors (1-4)")
-        
-                form_layout = QFormLayout(group)
-        
-                
-        
-                self.factor_widgets = []
-        
-                for i in range(4):
-        
-                    name_edit = QLineEdit()
-        
-                    levels_edit = QTextEdit()
-        
-                    levels_edit.setPlaceholderText("One level per line")
-        
-                    levels_edit.setFixedHeight(80)
-        
-                    
-        
-                    form_layout.addRow(f"Factor {i+1} Name:", name_edit)
-        
-                    form_layout.addRow(f"Factor {i+1} Levels:", levels_edit)
-        
-                    self.factor_widgets.append({"name_widget": name_edit, "levels_widget": levels_edit})
-        
-                    
-        
-                layout.addWidget(group)
-        
-        
-        
-            def _create_options_widgets(self, layout):
-        
-                # Replicates
-        
-                replicates_group = QGroupBox("Replicates")
-        
-                replicates_layout = QFormLayout(replicates_group)
-        
-                self.replicates_spinbox = QSpinBox()
-        
-                self.replicates_spinbox.setMinimum(1)
-        
-                self.replicates_spinbox.setValue(3)
-        
-                replicates_layout.addRow("Replicates per combination:", self.replicates_spinbox)
-        
-                layout.addWidget(replicates_group)
-        
-        
-        
-                # Output options
-        
-                output_group = QGroupBox("Output Options")
-        
-                output_layout = QVBoxLayout(output_group)
-        
-                self.sort_left_to_right_radio = QRadioButton("Left-to-right (by factor)")
-        
-                self.sort_randomized_radio = QRadioButton("Randomized")
-        
-                self.sort_left_to_right_radio.setChecked(True)
-        
-                
-        
-                self.seed_checkbox = QCheckBox("Use seed")
-        
-                self.seed_spinbox = QSpinBox()
-        
-                self.seed_spinbox.setMaximum(999999)
-        
-                self.seed_spinbox.setEnabled(False)
-        
-                self.seed_checkbox.toggled.connect(self.seed_spinbox.setEnabled)
-        
-                
-        
-                seed_layout = QHBoxLayout()
-        
-                seed_layout.addWidget(self.seed_checkbox)
-        
-                seed_layout.addWidget(self.seed_spinbox)
-        
-        
-        
-                output_layout.addWidget(self.sort_left_to_right_radio)
-        
-                output_layout.addWidget(self.sort_randomized_radio)
-        
-                output_layout.addLayout(seed_layout)
-        
-                layout.addWidget(output_group)
-        
-                
-        
-                        # Buttons
-        
-                
-        
-                        button_layout = QHBoxLayout()
-        
-                
-        
-                        self.generate_button = QPushButton("Generate / Update Table")
-        
-                
-        
-                        self.generate_button.setProperty("cssClass", "primary")
-        
-                
-        
-                        self.generate_button.clicked.connect(self.generate_table)
-        
-                
-        
-                        
-        
-                
-        
-                        self.reset_button = QPushButton("Reset to Sample")
-        
-                
-        
-                        self.reset_button.clicked.connect(self._set_default_factors)
-        
-                
-        
-                
-        
-                
-        
-                        self.export_button = QPushButton("Export CSV...")
-        
-                
-        
-                        self.export_button.clicked.connect(self.export_csv)
-        
-                
-        
-                        self.export_button.setEnabled(False)
-        
-                
-        
-                        
-        
-                
-        
-                        button_layout.addWidget(self.generate_button)
-        
-                
-        
-                        button_layout.addWidget(self.reset_button)
-        
-                
-        
-                        button_layout.addWidget(self.export_button)
-        
-                
-        
-                        layout.addLayout(button_layout)
-        
-        
-        
-            def _create_preview_widgets(self, layout):
-        
-                self.preview_label = QLabel("Generated Table Preview")
-        
-                self.info_label = QLabel("Combinations: 0, Total Rows: 0")
-        
-                
-        
-                self.table_view = QTableView()
-        
-                self.df_model = DataFrameModel()
-        
-                self.table_view.setModel(self.df_model)
-        
-                
-        
-                layout.addWidget(self.preview_label)
-        
-                layout.addWidget(self.info_label)
-        
-                layout.addWidget(self.table_view)
-        
-        
-        
-            def generate_table(self):
-        
-                try:
-        
-                    factors = []
-        
-                    for fw in self.factor_widgets:
-        
-                        name = fw["name_widget"].text().strip()
-        
-                        levels = [line.strip() for line in fw["levels_widget"].toPlainText().strip().split('\n') if line.strip()]
-        
-                        if name and levels:
-        
-                            factors.append({"name": name, "levels": levels})
-        
-                    
-        
-                    validated_factors = validate_factors(factors)
-        
-                    factor_names = [f["name"] for f in validated_factors]
-        
-                    replicates = self.replicates_spinbox.value()
-        
-                    
-        
-                    df = build_run_table(validated_factors, replicates)
-        
-                    
-        
-                    if self.sort_randomized_radio.isChecked():
-        
-                        seed = self.seed_spinbox.value() if self.seed_checkbox.isChecked() else None
-        
-                        df = randomize_run_table(df, seed)
-        
-                    else:
-        
-                        df = sort_run_table_left_to_right(df, factor_names)
-        
-        
-        
-                    self.df_generated = df
-        
-                    self.df_model.setDataFrame(df)
-        
-                    
-        
-                    # Update info
-        
-                    num_combinations = len(df) / replicates
-        
-                    self.info_label.setText(f"Combinations: {int(num_combinations)}, Total Rows: {len(df)}")
-        
-                    self.export_button.setEnabled(True)
-        
-        
-        
-                except ValueError as e:
-        
-                    QMessageBox.critical(self, "Validation Error", str(e))
-        
-                    self.export_button.setEnabled(False)
-        
-                except Exception as e:
-        
-                    QMessageBox.critical(self, "Error", f"An unexpected error occurred: {e}")
-        
-                    self.export_button.setEnabled(False)
-        
-        
-        
-            def export_csv(self):
-        
-                if self.df_generated is None:
-        
-                    QMessageBox.warning(self, "Warning", "No table has been generated yet.")
-        
-                    return
-        
-        
-        
-                path, _ = QFileDialog.getSaveFileName(self, "Save CSV", "msa_run_table.csv", "CSV Files (*.csv)")
-        
-                if path:
-        
-                    try:
-        
-                        export_run_table_csv(self.df_generated, path)
-        
-                        QMessageBox.information(self, "Success", f"Table exported to:\n{path}")
-        
-                    except Exception as e:
-        
-                        QMessageBox.critical(self, "Export Error", f"Failed to export CSV: {e}")
-        
-        
-        
-            def _set_default_factors(self):
-        
-                """Populates the form with a sample 2-factor setup."""
-        
-                # Factor 1
-        
-                self.factor_widgets[0]["name_widget"].setText("Sample")
-        
-                self.factor_widgets[0]["levels_widget"].setPlainText("Sample 1\nSample 2\nSample 3")
-        
-                # Factor 2
-        
-                self.factor_widgets[1]["name_widget"].setText("Operator")
-        
-                self.factor_widgets[1]["levels_widget"].setPlainText("Operator A\nOperator B")
-        
-                # Clear others
-        
-                self.factor_widgets[2]["name_widget"].clear()
-        
-                self.factor_widgets[2]["levels_widget"].clear()
-        
-                self.factor_widgets[3]["name_widget"].clear()
-        
-                self.factor_widgets[3]["levels_widget"].clear()
-        
-                
-        
-                self.replicates_spinbox.setValue(3)
-        
-                self.sort_left_to_right_radio.setChecked(True)
-        
-                
-        
-                # Clear preview
-        
-                self.df_generated = None
-        
-                self.df_model.setDataFrame(pd.DataFrame())
-        
-                self.info_label.setText("Combinations: 0, Total Rows: 0")
-        
-                self.export_button.setEnabled(False)
-        
-        
+        controls_layout.addStretch()
+
+        self._set_default_factors()
+
+    def _create_factor_widgets(self, layout):
+        group = QGroupBox("Factors (1-4)")
+        form_layout = QFormLayout(group)
+        
+        self.factor_widgets = []
+        for i in range(4):
+            name_edit = QLineEdit()
+            levels_edit = QTextEdit()
+            levels_edit.setPlaceholderText("One level per line")
+            levels_edit.setFixedHeight(80)
+            
+            form_layout.addRow(f"Factor {i+1} Name:", name_edit)
+            form_layout.addRow(f"Factor {i+1} Levels:", levels_edit)
+            self.factor_widgets.append({"name_widget": name_edit, "levels_widget": levels_edit})
+            
+        layout.addWidget(group)
+
+    def _create_options_widgets(self, layout):
+        # Replicates
+        replicates_group = QGroupBox("Replicates")
+        replicates_layout = QFormLayout(replicates_group)
+        self.replicates_spinbox = QSpinBox()
+        self.replicates_spinbox.setMinimum(1)
+        self.replicates_spinbox.setValue(3)
+        replicates_layout.addRow("Replicates per combination:", self.replicates_spinbox)
+        layout.addWidget(replicates_group)
+
+        # Output options
+        output_group = QGroupBox("Output Options")
+        output_layout = QVBoxLayout(output_group)
+        self.sort_left_to_right_radio = QRadioButton("Left-to-right (by factor)")
+        self.sort_randomized_radio = QRadioButton("Randomized")
+        self.sort_left_to_right_radio.setChecked(True)
+        
+        self.seed_checkbox = QCheckBox("Use seed")
+        self.seed_spinbox = QSpinBox()
+        self.seed_spinbox.setMaximum(999999)
+        self.seed_spinbox.setEnabled(False)
+        self.seed_checkbox.toggled.connect(self.seed_spinbox.setEnabled)
+        
+        seed_layout = QHBoxLayout()
+        seed_layout.addWidget(self.seed_checkbox)
+        seed_layout.addWidget(self.seed_spinbox)
+
+        output_layout.addWidget(self.sort_left_to_right_radio)
+        output_layout.addWidget(self.sort_randomized_radio)
+        output_layout.addLayout(seed_layout)
+        layout.addWidget(output_group)
+        
+        # Buttons
+        button_layout = QHBoxLayout()
+        self.generate_button = QPushButton("Generate / Update Table")
+        self.generate_button.setProperty("cssClass", "primary")
+        self.generate_button.clicked.connect(self.generate_table)
+        
+        self.reset_button = QPushButton("Reset to Sample")
+        self.reset_button.clicked.connect(self._set_default_factors)
+
+        self.export_button = QPushButton("Export CSV...")
+        self.export_button.clicked.connect(self.export_csv)
+        self.export_button.setEnabled(False)
+        
+        button_layout.addWidget(self.generate_button)
+        button_layout.addWidget(self.reset_button)
+        button_layout.addWidget(self.export_button)
+        layout.addLayout(button_layout)
+
+    def _create_preview_widgets(self, layout):
+        self.preview_label = QLabel("Generated Table Preview")
+        self.info_label = QLabel("Combinations: 0, Total Rows: 0")
+        
+        self.table_view = QTableView()
+        self.df_model = DataFrameModel()
+        self.table_view.setModel(self.df_model)
+        
+        layout.addWidget(self.preview_label)
+        layout.addWidget(self.info_label)
+        layout.addWidget(self.table_view)
+
+    def generate_table(self):
+        try:
+            factors = []
+            for fw in self.factor_widgets:
+                name = fw["name_widget"].text().strip()
+                levels = [line.strip() for line in fw["levels_widget"].toPlainText().strip().split('\n') if line.strip()]
+                if name and levels:
+                    factors.append({"name": name, "levels": levels})
+            
+            validated_factors = validate_factors(factors)
+            factor_names = [f["name"] for f in validated_factors]
+            replicates = self.replicates_spinbox.value()
+            
+            df = build_run_table(validated_factors, replicates)
+            
+            if self.sort_randomized_radio.isChecked():
+                seed = self.seed_spinbox.value() if self.seed_checkbox.isChecked() else None
+                df = randomize_run_table(df, seed)
+            else:
+                df = sort_run_table_left_to_right(df, factor_names)
+
+            self.df_generated = df
+            self.df_model.setDataFrame(df)
+            
+            # Update info
+            num_combinations = len(df) / replicates
+            self.info_label.setText(f"Combinations: {int(num_combinations)}, Total Rows: {len(df)}")
+            self.export_button.setEnabled(True)
+
+        except ValueError as e:
+            QMessageBox.critical(self, "Validation Error", str(e))
+            self.export_button.setEnabled(False)
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"An unexpected error occurred: {e}")
+            self.export_button.setEnabled(False)
+
+    def export_csv(self):
+        if self.df_generated is None:
+            QMessageBox.warning(self, "Warning", "No table has been generated yet.")
+            return
+
+        path, _ = QFileDialog.getSaveFileName(self, "Save CSV", "msa_run_table.csv", "CSV Files (*.csv)")
+        if path:
+            try:
+                export_run_table_csv(self.df_generated, path)
+                QMessageBox.information(self, "Success", f"Table exported to:\n{path}")
+            except Exception as e:
+                QMessageBox.critical(self, "Export Error", f"Failed to export CSV: {e}")
+
+    def _set_default_factors(self):
+        """Populates the form with a sample 2-factor setup."""
+        # Factor 1
+        self.factor_widgets[0]["name_widget"].setText("Sample")
+        self.factor_widgets[0]["levels_widget"].setPlainText("Sample 1\nSample 2\nSample 3")
+        # Factor 2
+        self.factor_widgets[1]["name_widget"].setText("Operator")
+        self.factor_widgets[1]["levels_widget"].setPlainText("Operator A\nOperator B")
+        # Clear others
+        self.factor_widgets[2]["name_widget"].clear()
+        self.factor_widgets[2]["levels_widget"].clear()
+        self.factor_widgets[3]["name_widget"].clear()
+        self.factor_widgets[3]["levels_widget"].clear()
+        
+        self.replicates_spinbox.setValue(3)
+        self.sort_left_to_right_radio.setChecked(True)
+        
+        # Clear preview
+        self.df_generated = None
+        self.df_model.setDataFrame(pd.DataFrame())
+        self.info_label.setText("Combinations: 0, Total Rows: 0")
+        self.export_button.setEnabled(False)

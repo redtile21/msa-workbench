@@ -63,9 +63,9 @@ def get_variability_chart(result: MSAResult, ax: plt.Axes):
     trans = mtransforms.blended_transform_factory(ax.transData, ax.transAxes)
     trans_label = mtransforms.blended_transform_factory(ax.transAxes, ax.transAxes)
 
-    y_offset_part = -0.05
-    y_offset_inst = -0.10
-    y_offset_op = -0.15 if inst_col else -0.10
+    y_offset_part = -0.1
+    y_offset_inst = -0.2
+    y_offset_op = -0.3 if inst_col else -0.2
 
     for i, row in unique_groups.iterrows():
         ax.text(row['x_pos'], y_offset_part, str(row[part_col]), transform=trans,
@@ -97,7 +97,7 @@ def get_variability_chart(result: MSAResult, ax: plt.Axes):
             ax.axvline(x=last + 0.5, color='black', linestyle='-', linewidth=1.5)
 
     ax.text(-0.01, y_offset_op, op_col, transform=trans_label, ha='right', va='top', fontsize=10, fontweight='bold')
-    ax.figure.subplots_adjust(bottom=0.3 if inst_col else 0.25, right=0.9)
+    ax.figure.subplots_adjust(bottom=0.4 if inst_col else 0.3, right=0.9)
     ax.figure.tight_layout()
 
 
@@ -169,7 +169,7 @@ def get_stddev_chart(result: MSAResult, ax: plt.Axes):
             fontweight='bold')
 
     ax.set_ylabel("Standard Deviation")
-    ax.set_title(f"Standard Deviation Chart by {', '.join(group_cols)}")
+    ax.set_title(f"Standard Deviation Chart by {', '.join([c.replace('(', '').replace(')', '') for c in group_cols])}")
     ax.set_xticks([])
     ax.set_xlim(-0.5, len(unique_groups) - 0.5)
     ax.grid(True, axis='y', linestyle=':', alpha=0.5, zorder=1)
@@ -177,9 +177,9 @@ def get_stddev_chart(result: MSAResult, ax: plt.Axes):
     trans = mtransforms.blended_transform_factory(ax.transData, ax.transAxes)
     trans_label = mtransforms.blended_transform_factory(ax.transAxes, ax.transAxes)
 
-    y_offset_part = -0.05
-    y_offset_inst = -0.10
-    y_offset_op = -0.15 if inst_col else -0.10
+    y_offset_part = -0.1
+    y_offset_inst = -0.2
+    y_offset_op = -0.3 if inst_col else -0.2
 
     for i, row in unique_groups.iterrows():
         ax.text(row['x_pos'], y_offset_part, str(row[part_col]), transform=trans, ha='center', va='top', fontsize=9,
@@ -206,5 +206,5 @@ def get_stddev_chart(result: MSAResult, ax: plt.Axes):
         if last < len(unique_groups) - 1:
             ax.axvline(x=last + 0.5, color='black', linestyle='-', linewidth=1.5)
     ax.text(-0.01, y_offset_op, op_col, transform=trans_label, ha='right', va='top', fontsize=10, fontweight='bold')
-    ax.figure.subplots_adjust(bottom=0.3 if inst_col else 0.25, right=0.9)
+    ax.figure.subplots_adjust(bottom=0.4 if inst_col else 0.3, right=0.9)
     ax.figure.tight_layout()

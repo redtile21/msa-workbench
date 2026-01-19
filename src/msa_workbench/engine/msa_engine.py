@@ -485,7 +485,7 @@ def _build_result_object(df, config, vc_map, anova_rows, resid, warnings):
 
     for k in repro_keys:
         vc_rows.append(VarianceComponentRow(
-            f"Reproducibility ({k})", vc_map[k], sigmas[k], 6.0 * sigmas[k],
+            f"Reproducibility: {k}", vc_map[k], sigmas[k], 6.0 * sigmas[k],
             get_pct_contrib(vc_map[k]), get_pct_sv(sigmas[k]), get_pct_tol(sigmas[k])
         ))
 

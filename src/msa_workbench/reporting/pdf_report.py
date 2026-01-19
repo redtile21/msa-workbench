@@ -49,8 +49,8 @@ def create_pdf_report(result: MSAResult) -> bytes:
     pdf.set_font("Arial", size=8)
 
     # Header
-    cols = ["Source", "Var Comp", "Variability (6*SD)", "% Contrib", "% Study Var", "% Tol"]
-    col_widths = [50, 25, 30, 25, 25, 25]
+    cols = ["Source", "Variance Comp.", "Std. Dev.", "6 * Std. Dev.", "% Contribution", "% Study Var", "% Tolerance"]
+    col_widths = [45, 25, 25, 25, 25, 25, 25]
     for i, h in enumerate(cols):
         pdf.cell(col_widths[i], 7, h, 1, 0, 'C')
     pdf.ln()
@@ -59,10 +59,11 @@ def create_pdf_report(result: MSAResult) -> bytes:
     for r in result.var_components:
         pdf.cell(col_widths[0], 6, r.source, 1)
         pdf.cell(col_widths[1], 6, _format_sig(r.var_comp), 1, 0, 'R')
-        pdf.cell(col_widths[2], 6, _format_sig(r.variability), 1, 0, 'R')
-        pdf.cell(col_widths[3], 6, _format_sig(r.pct_contribution), 1, 0, 'R')
-        pdf.cell(col_widths[4], 6, _format_sig(r.pct_study_var), 1, 0, 'R')
-        pdf.cell(col_widths[5], 6, _format_sig(r.pct_tolerance), 1, 0, 'R')
+        pdf.cell(col_widths[2], 6, _format_sig(r.std_dev), 1, 0, 'R')
+        pdf.cell(col_widths[3], 6, _format_sig(r.variability), 1, 0, 'R')
+        pdf.cell(col_widths[4], 6, _format_sig(r.pct_contribution), 1, 0, 'R')
+        pdf.cell(col_widths[5], 6, _format_sig(r.pct_study_var), 1, 0, 'R')
+        pdf.cell(col_widths[6], 6, _format_sig(r.pct_tolerance), 1, 0, 'R')
         pdf.ln()
     pdf.ln(5)
 
@@ -87,7 +88,7 @@ def create_pdf_report(result: MSAResult) -> bytes:
     pdf.set_font("Arial", size=8)
 
     # Header
-    cols = ["Source", "DF", "SS", "MS", "F", "p-value"]
+    cols = ["Source", "DF", "Sum of Sq.", "Mean Sq.", "F-Value", "P-Value"]
     col_widths = [60, 15, 30, 30, 20, 20]
     for i, h in enumerate(cols):
         pdf.cell(col_widths[i], 7, h, 1, 0, 'C')

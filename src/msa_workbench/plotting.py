@@ -97,7 +97,8 @@ def get_variability_chart(result: MSAResult, ax: plt.Axes):
             ax.axvline(x=last + 0.5, color='black', linestyle='-', linewidth=1.5)
 
     ax.text(-0.01, y_offset_op, op_col, transform=trans_label, ha='right', va='top', fontsize=10, fontweight='bold')
-    ax.figure.subplots_adjust(bottom=0.25 if inst_col else 0.2, right=0.9)
+    ax.figure.subplots_adjust(bottom=0.3 if inst_col else 0.25, right=0.9)
+    ax.figure.tight_layout()
 
 
 def get_stddev_chart(result: MSAResult, ax: plt.Axes):
@@ -205,4 +206,5 @@ def get_stddev_chart(result: MSAResult, ax: plt.Axes):
         if last < len(unique_groups) - 1:
             ax.axvline(x=last + 0.5, color='black', linestyle='-', linewidth=1.5)
     ax.text(-0.01, y_offset_op, op_col, transform=trans_label, ha='right', va='top', fontsize=10, fontweight='bold')
-    ax.figure.subplots_adjust(bottom=0.25 if inst_col else 0.2, right=0.9)
+    ax.figure.subplots_adjust(bottom=0.3 if inst_col else 0.25, right=0.9)
+    ax.figure.tight_layout()

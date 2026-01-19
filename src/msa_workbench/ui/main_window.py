@@ -4,6 +4,8 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QWidget,
     QVBoxLayout,
+    QHBoxLayout,
+    QGroupBox,
     QPushButton,
     QFileDialog,
     QTableView,
@@ -390,6 +392,15 @@ class MainWindow(QMainWindow):
 
         # Var Comp
         var_comp_df = pd.DataFrame(self.result.var_components)
+        var_comp_df.rename(columns={
+            "source": "Source",
+            "var_comp": "Variance Comp.",
+            "std_dev": "Std. Dev.",
+            "variability": "6 * Std. Dev.",
+            "pct_contribution": "% Contribution",
+            "pct_study_var": "% Study Var",
+            "pct_tolerance": "% Tolerance",
+        }, inplace=True)
         for col in var_comp_df.columns:
             if pd.api.types.is_numeric_dtype(var_comp_df[col]):
                 var_comp_df[col] = var_comp_df[col].apply(_format_sig)
@@ -405,6 +416,14 @@ class MainWindow(QMainWindow):
 
         # ANOVA
         anova_df = pd.DataFrame(self.result.anova_table)
+        anova_df.rename(columns={
+            "term": "Source",
+            "df": "DF",
+            "ss": "Sum of Sq.",
+            "ms": "Mean Sq.",
+            "f": "F-Value",
+            "p": "P-Value",
+        }, inplace=True)
         for col in anova_df.columns:
             if pd.api.types.is_numeric_dtype(anova_df[col]):
                 anova_df[col] = anova_df[col].apply(_format_sig)

@@ -310,7 +310,7 @@ def _run_main_effects_msa(df: pd.DataFrame, config: MSAConfig) -> MSAResult:
     formula = f'Q("{y}") ~ {" + ".join([f"C(Q(\'{f}\'))" for f in factors])}'
     
     model = smf.ols(formula, data=df).fit()
-    anova = anova_lm(model, typ=1)
+    anova = anova_lm(model, typ=2)
 
     # Correct F-Tests
     ms_res, df_res = _get_ms_df(anova, "Residual")
@@ -442,6 +442,9 @@ def _build_result_object(df, config, vc_map, anova_rows, resid, warnings):
 
     sig2_repeat = vc_map.get("Repeatability", 0.0)
     sig2_part = vc_map.get(part, 0.0)
+
+    if abs(sig2_part) < 1e-9 and config.model_type == 'main effects':
+        warnings.append("WARNING: Part-to-Part variation is zero. This may indicate that interaction effects (not included in a main effects model) are significant and are inflating the residual error, masking the true part variation.")
     
     if config.model_type == 'crossed':
         sig2_repro = sum(v for k, v in vc_map.items() if k != part and k != "Repeatability")

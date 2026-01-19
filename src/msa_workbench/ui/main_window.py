@@ -246,13 +246,16 @@ class MainWindow(QMainWindow):
         if self.result is None:
             return
 
+        def _format_sig(val):
+            if val is None or not isinstance(val, (int, float)):
+                return "N/A"
+            return "{:.4g}".format(val)
+
         # Summary
         summary = self.result.grr_summary
-        self.grr_sv_label.setText(f"{summary.total_gage_rr_pct_study_var:.2f}%")
-        tol_text = f"{summary.total_gage_rr_pct_tolerance:.2f}%" if summary.total_gage_rr_pct_tolerance is not None else "N/A"
-        self.grr_tol_label.setText(tol_text)
-        ndc_text = f"{summary.ndc:.1f}" if summary.ndc is not None else "N/A"
-        self.ndc_label.setText(ndc_text)
+        self.grr_sv_label.setText(f"{_format_sig(summary.total_gage_rr_pct_study_var)}%")
+        self.grr_tol_label.setText(f"{_format_sig(summary.total_gage_rr_pct_tolerance)}%" if summary.total_gage_rr_pct_tolerance is not None else "N/A")
+        self.ndc_label.setText(_format_sig(summary.ndc))
         self.interpretation_label.setText(summary.interpretation)
 
         # Warnings
@@ -260,6 +263,9 @@ class MainWindow(QMainWindow):
 
         # Var Comp
         var_comp_df = pd.DataFrame(self.result.var_components)
+        for col in var_comp_df.columns:
+            if pd.api.types.is_numeric_dtype(var_comp_df[col]):
+                var_comp_df[col] = var_comp_df[col].apply(_format_sig)
         self.var_comp_model.setDataFrame(var_comp_df)
         self.var_comp_table.resizeColumnsToContents()
         
@@ -272,6 +278,9 @@ class MainWindow(QMainWindow):
 
         # ANOVA
         anova_df = pd.DataFrame(self.result.anova_table)
+        for col in anova_df.columns:
+            if pd.api.types.is_numeric_dtype(anova_df[col]):
+                anova_df[col] = anova_df[col].apply(_format_sig)
         self.anova_model.setDataFrame(anova_df)
         self.anova_table.resizeColumnsToContents()
 

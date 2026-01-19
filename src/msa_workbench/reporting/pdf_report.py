@@ -8,6 +8,12 @@ from msa_workbench.reporting.analysis_notes import get_variation_impact_analysis
 
 
 def create_pdf_report(result: MSAResult) -> bytes:
+    
+    def _format_sig(val):
+        if val is None or not isinstance(val, (int, float)):
+            return "N/A"
+        return "{:.4g}".format(val)
+
     class PDF(FPDF):
         def header(self):
             self.set_font('Arial', 'B', 15)
@@ -28,13 +34,10 @@ def create_pdf_report(result: MSAResult) -> bytes:
     pdf.cell(0, 10, "Summary Metrics", 0, 1)
     pdf.set_font("Arial", size=10)
 
-    grr_sv = result.grr_summary.total_gage_rr_pct_study_var
-    grr_tol = result.grr_summary.total_gage_rr_pct_tolerance
-    ndc = result.grr_summary.ndc
-
-    pdf.cell(60, 10, f"Gage R&R (%SV): {grr_sv:.2f}%", 1)
-    pdf.cell(60, 10, f"Gage R&R (%Tol): {grr_tol:.2f}%" if grr_tol else "Gage R&R (%Tol): N/A", 1)
-    pdf.cell(60, 10, f"ndc: {ndc:.1f}" if ndc else "ndc: N/A", 1)
+    summary = result.grr_summary
+    pdf.cell(60, 10, f"Gage R&R (%SV): {_format_sig(summary.total_gage_rr_pct_study_var)}%", 1)
+    pdf.cell(60, 10, f"Gage R&R (%Tol): {_format_sig(summary.total_gage_rr_pct_tolerance)}%" if summary.total_gage_rr_pct_tolerance is not None else "N/A", 1)
+    pdf.cell(60, 10, f"ndc: {_format_sig(summary.ndc)}", 1)
     pdf.ln(15)
 
     pdf.multi_cell(0, 10, f"Interpretation: {result.grr_summary.interpretation}")
@@ -54,13 +57,12 @@ def create_pdf_report(result: MSAResult) -> bytes:
 
     pdf.set_font("Arial", size=8)
     for r in result.var_components:
-        pct_tol_str = f"{r.pct_tolerance:.1f}" if r.pct_tolerance is not None else "N/A"
         pdf.cell(col_widths[0], 6, r.source, 1)
-        pdf.cell(col_widths[1], 6, f"{r.var_comp:.4g}", 1, 0, 'R')
-        pdf.cell(col_widths[2], 6, f"{r.variability:.4g}", 1, 0, 'R')
-        pdf.cell(col_widths[3], 6, f"{r.pct_contribution:.1f}", 1, 0, 'R')
-        pdf.cell(col_widths[4], 6, f"{r.pct_study_var:.1f}", 1, 0, 'R')
-        pdf.cell(col_widths[5], 6, pct_tol_str, 1, 0, 'R')
+        pdf.cell(col_widths[1], 6, _format_sig(r.var_comp), 1, 0, 'R')
+        pdf.cell(col_widths[2], 6, _format_sig(r.variability), 1, 0, 'R')
+        pdf.cell(col_widths[3], 6, _format_sig(r.pct_contribution), 1, 0, 'R')
+        pdf.cell(col_widths[4], 6, _format_sig(r.pct_study_var), 1, 0, 'R')
+        pdf.cell(col_widths[5], 6, _format_sig(r.pct_tolerance), 1, 0, 'R')
         pdf.ln()
     pdf.ln(5)
 
@@ -92,15 +94,12 @@ def create_pdf_report(result: MSAResult) -> bytes:
     pdf.ln()
 
     for r in result.anova_table:
-        f_str = f"{r.f:.3f}" if r.f is not None else "N/A"
-        p_str = f"{r.p:.4f}" if r.p is not None else "N/A"
-
         pdf.cell(col_widths[0], 6, r.term, 1)
-        pdf.cell(col_widths[1], 6, f"{r.df:.0f}", 1, 0, 'C')
-        pdf.cell(col_widths[2], 6, f"{r.ss:.4g}", 1, 0, 'R')
-        pdf.cell(col_widths[3], 6, f"{r.ms:.4g}", 1, 0, 'R')
-        pdf.cell(col_widths[4], 6, f_str, 1, 0, 'R')
-        pdf.cell(col_widths[5], 6, p_str, 1, 0, 'R')
+        pdf.cell(col_widths[1], 6, _format_sig(r.df), 1, 0, 'C')
+        pdf.cell(col_widths[2], 6, _format_sig(r.ss), 1, 0, 'R')
+        pdf.cell(col_widths[3], 6, _format_sig(r.ms), 1, 0, 'R')
+        pdf.cell(col_widths[4], 6, _format_sig(r.f), 1, 0, 'R')
+        pdf.cell(col_widths[5], 6, _format_sig(r.p), 1, 0, 'R')
         pdf.ln()
     pdf.ln(5)
 

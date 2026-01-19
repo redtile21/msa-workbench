@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 from PySide6.QtWidgets import (
     QMainWindow,
     QWidget,
@@ -24,6 +25,8 @@ from PySide6.QtCore import Qt
 from msa_workbench.ui.dataframe_model import DataFrameModel
 from msa_workbench.engine.msa_engine import MSAConfig, run_crossed_msa, MSAResult
 from msa_workbench.ui.widgets.mpl_canvas import MplCanvas
+from msa_workbench.ui.widgets.status_badge import StatusBadge
+from msa_workbench.ui.widgets.indentation_delegate import IndentationDelegate
 from msa_workbench.reporting.pdf_report import save_pdf_report
 from msa_workbench.plotting import get_variability_chart, get_stddev_chart
 from msa_workbench.reporting.analysis_notes import get_variation_impact_analysis
@@ -57,60 +60,108 @@ class MainWindow(QMainWindow):
         self._setup_results_page()
 
     def _setup_analysis_page(self):
-        layout = QVBoxLayout(self.analysis_page)
+        # Main layout for the analysis tab
+        page_layout = QHBoxLayout(self.analysis_page)
+        splitter = QSplitter(Qt.Horizontal)
+        page_layout.addWidget(splitter)
+
+        # --- Left panel for controls ---
+        controls_widget = QWidget()
+        controls_layout = QVBoxLayout(controls_widget)
         
-        # Data Loading
+        # --- Right panel for data preview ---
+        preview_widget = QWidget()
+        preview_layout = QVBoxLayout(preview_widget)
+
+        splitter.addWidget(controls_widget)
+        splitter.addWidget(preview_widget)
+        splitter.setSizes([450, 550])
+
+        # --- Data Input Group ---
+        data_group = QGroupBox("Data Input")
+        data_layout = QVBoxLayout(data_group)
         self.load_button = QPushButton("Load CSV...")
         self.load_button.clicked.connect(self.load_csv)
-        layout.addWidget(self.load_button)
+        self.df_info_label = QLabel("Load a CSV file to begin.")
+        data_layout.addWidget(self.load_button)
+        data_layout.addWidget(self.df_info_label)
+        controls_layout.addWidget(data_group)
 
-        self.df_info_label = QLabel("No data loaded.")
-        layout.addWidget(self.df_info_label)
-
-        self.table_view = QTableView()
-        self.df_model = DataFrameModel()
-        self.table_view.setModel(self.df_model)
-        layout.addWidget(self.table_view)
-
-        # Configuration
-        config_form = QWidget()
-        config_layout = QFormLayout(config_form)
-        layout.addWidget(config_form)
-
+        # --- Model Configuration Group ---
+        model_group = QGroupBox("Model Configuration")
+        model_layout = QFormLayout(model_group)
         self.response_combo = QComboBox()
-        config_layout.addRow("Response:", self.response_combo)
+        self.response_combo.setToolTip("Select the measurement column.")
+        self.response_suggestion_label = QLabel("Suggested")
+        self.response_suggestion_label.setStyleSheet("color: #6c757d; font-style: italic;")
+        model_layout.addRow("Response:", self.response_combo)
+        model_layout.addRow("", self.response_suggestion_label)
 
         self.factors_button = QPushButton("Select Factors...")
+        self.factors_button.setToolTip("Choose 2-4 categorical columns for the analysis.")
         self.factors_button.clicked.connect(self.select_factors)
         self.factors_label = QLabel("None selected")
-        config_layout.addRow("Factors:", self.factors_button)
-        config_layout.addRow("", self.factors_label)
+        self.factors_suggestion_label = QLabel("Suggested")
+        self.factors_suggestion_label.setStyleSheet("color: #6c757d; font-style: italic;")
+        model_layout.addRow("Factors:", self.factors_button)
+        model_layout.addRow("", self.factors_label)
+        model_layout.addRow("", self.factors_suggestion_label)
         self.selected_factors = []
 
         self.model_type_combo = QComboBox()
         self.model_type_combo.addItems(["Crossed", "Main Effects"])
-        config_layout.addRow("Model Type:", self.model_type_combo)
+        self.model_type_combo.setToolTip("Crossed model includes interactions (2-3 factors).\nMain Effects model is for 4 factors or to exclude interactions.")
+        model_layout.addRow("Model Type:", self.model_type_combo)
 
         self.part_combo = QComboBox()
-        config_layout.addRow("Part:", self.part_combo)
+        self.part_combo.setToolTip("Select the column representing the part/sample.")
+        self.part_suggestion_label = QLabel("Suggested")
+        self.part_suggestion_label.setStyleSheet("color: #6c757d; font-style: italic;")
+        model_layout.addRow("Part:", self.part_combo)
+        model_layout.addRow("", self.part_suggestion_label)
 
         self.operator_combo = QComboBox()
-        config_layout.addRow("Operator:", self.operator_combo)
-        
+        self.operator_combo.setToolTip("Select the column representing the operator/appraiser.")
+        self.operator_suggestion_label = QLabel("Suggested")
+        self.operator_suggestion_label.setStyleSheet("color: #6c757d; font-style: italic;")
+        model_layout.addRow("Operator:", self.operator_combo)
+        model_layout.addRow("", self.operator_suggestion_label)
+        controls_layout.addWidget(model_group)
+
+        # --- Specification Limits Group ---
+        spec_group = QGroupBox("Specification Limits (Optional)")
+        spec_layout = QFormLayout(spec_group)
         self.lsl_input = QLineEdit()
-        config_layout.addRow("LSL:", self.lsl_input)
+        self.lsl_input.setToolTip("Lower Specification Limit.\nUsed with USL to calculate %Tolerance.")
+        spec_layout.addRow("LSL:", self.lsl_input)
         
         self.usl_input = QLineEdit()
-        config_layout.addRow("USL:", self.usl_input)
+        self.usl_input.setToolTip("Upper Specification Limit.\nUsed with LSL to calculate %Tolerance.")
+        spec_layout.addRow("USL:", self.usl_input)
 
         self.tolerance_input = QLineEdit()
-        config_layout.addRow("Tolerance:", self.tolerance_input)
+        self.tolerance_input.setToolTip("Manual Tolerance value.\nOverrides USL-LSL if provided.")
+        spec_layout.addRow("Tolerance:", self.tolerance_input)
+        controls_layout.addWidget(spec_group)
 
-        # Run button
+        # --- Actions Group ---
+        actions_group = QGroupBox("Actions")
+        actions_layout = QVBoxLayout(actions_group)
         self.run_button = QPushButton("Run Analysis")
+        self.run_button.setProperty("cssClass", "primary")
         self.run_button.clicked.connect(self.run_analysis)
         self.run_button.setEnabled(False)
-        layout.addWidget(self.run_button)
+        actions_layout.addWidget(self.run_button)
+        controls_layout.addWidget(actions_group)
+        
+        controls_layout.addStretch()
+
+        # --- Preview Table ---
+        preview_layout.addWidget(QLabel("Data Preview"))
+        self.table_view = QTableView()
+        self.df_model = DataFrameModel()
+        self.table_view.setModel(self.df_model)
+        preview_layout.addWidget(self.table_view)
 
     def _setup_results_page(self):
         layout = QVBoxLayout(self.results_page)
@@ -134,11 +185,11 @@ class MainWindow(QMainWindow):
         self.grr_sv_label = QLabel("N/A")
         self.grr_tol_label = QLabel("N/A")
         self.ndc_label = QLabel("N/A")
-        self.interpretation_label = QLabel("N/A")
+        self.interpretation_badge = StatusBadge("N/A")
         summary_layout.addRow("GRR % Study Var:", self.grr_sv_label)
         summary_layout.addRow("GRR % Tolerance:", self.grr_tol_label)
         summary_layout.addRow("NDC:", self.ndc_label)
-        summary_layout.addRow("Interpretation:", self.interpretation_label)
+        summary_layout.addRow("Interpretation:", self.interpretation_badge)
 
         # Warnings Tab
         warnings_layout = QVBoxLayout(warnings_tab)
@@ -148,9 +199,13 @@ class MainWindow(QMainWindow):
 
         # Var Comp Tab
         var_comp_layout = QVBoxLayout(var_comp_tab)
+        var_comp_title = QLabel("Variance Components (Study Variation Breakdown)")
+        var_comp_title.setStyleSheet("font-weight: bold;")
+        var_comp_layout.addWidget(var_comp_title)
         self.var_comp_table = QTableView()
         self.var_comp_model = DataFrameModel()
         self.var_comp_table.setModel(self.var_comp_model)
+        self.var_comp_table.setItemDelegateForColumn(0, IndentationDelegate(self))
         var_comp_layout.addWidget(self.var_comp_table)
         self.impact_analysis_text = QTextEdit()
         self.impact_analysis_text.setReadOnly(True)
@@ -158,9 +213,13 @@ class MainWindow(QMainWindow):
 
         # ANOVA Tab
         anova_layout = QVBoxLayout(anova_tab)
+        anova_title = QLabel("ANOVA Table (Model Fit)")
+        anova_title.setStyleSheet("font-weight: bold;")
+        anova_layout.addWidget(anova_title)
         self.anova_table = QTableView()
         self.anova_model = DataFrameModel()
         self.anova_table.setModel(self.anova_model)
+        self.anova_table.setItemDelegateForColumn(0, IndentationDelegate(self))
         anova_layout.addWidget(self.anova_table)
 
         # Charts Tab
@@ -185,6 +244,7 @@ class MainWindow(QMainWindow):
                 self.df_info_label.setText(f"Loaded: {self.df.shape[0]} rows, {self.df.shape[1]} columns")
                 self._update_config_options()
                 self.run_button.setEnabled(True)
+                self._auto_populate_fields()
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to load CSV: {e}")
 
@@ -196,7 +256,64 @@ class MainWindow(QMainWindow):
         self.response_combo.clear()
         self.response_combo.addItems(cols)
 
+    def _auto_populate_fields(self):
+        if self.df is None:
+            return
+
+        cols = self.df.columns.tolist()
+        numeric_cols = self.df.select_dtypes(include=np.number).columns.tolist()
+        categorical_cols = self.df.select_dtypes(include=['object', 'category']).columns.tolist()
+
+        # Hide all suggestion labels initially
+        for label in [self.response_suggestion_label, self.factors_suggestion_label, self.part_suggestion_label, self.operator_suggestion_label]:
+            label.setVisible(False)
+
+        # 1. Auto-select Response
+        response_candidates = [c for c in ["measurement", "result", "value", "response", "y"] if c.lower() in [col.lower() for col in cols]]
+        if response_candidates:
+            self.response_combo.setCurrentText(response_candidates[0])
+            self.response_suggestion_label.setVisible(True)
+        elif numeric_cols:
+            self.response_combo.setCurrentText(numeric_cols[-1])
+            self.response_suggestion_label.setVisible(True)
+        
+        # 2. Suggest Factors
+        excluded_patterns = ["date", "time", "timestamp", "run", "order", "id"]
+        suggested_factors = [c for c in categorical_cols if not any(pat in c.lower() for pat in excluded_patterns)]
+        if suggested_factors:
+            self.selected_factors = suggested_factors[:4] # Limit to 4
+            self.factors_label.setText(", ".join(self.selected_factors))
+            self.factors_suggestion_label.setVisible(True)
+            self.part_combo.clear()
+            self.part_combo.addItems(self.selected_factors)
+            self.operator_combo.clear()
+            self.operator_combo.addItems(self.selected_factors)
+
+        # 3. Auto-select Part
+        part_candidates = [c for c in self.selected_factors if any(p in c.lower() for p in ["part", "sample", "material", "specimen", "item", "unit", "lot"])]
+        if part_candidates:
+            self.part_combo.setCurrentText(part_candidates[0])
+            self.part_suggestion_label.setVisible(True)
+
+        # 4. Auto-select Operator
+        operator_candidates = [c for c in self.selected_factors if any(o in c.lower() for o in ["operator", "user", "tech", "technician", "appraiser", "analyst"])]
+        if operator_candidates:
+            self.operator_combo.setCurrentText(operator_candidates[0])
+            self.operator_suggestion_label.setVisible(True)
+        
+        # Update model type based on factor count
+        if len(self.selected_factors) >= 4:
+            self.model_type_combo.setCurrentText("Main Effects")
+            self.model_type_combo.setEnabled(False)
+        else:
+            self.model_type_combo.setEnabled(True)
+
     def select_factors(self):
+        # Hide suggestion labels when user manually changes selection
+        self.factors_suggestion_label.setVisible(False)
+        self.part_suggestion_label.setVisible(False)
+        self.operator_suggestion_label.setVisible(False)
+
         if self.df is None:
             QMessageBox.warning(self, "Warning", "Load data first.")
             return
@@ -254,10 +371,19 @@ class MainWindow(QMainWindow):
 
         # Summary
         summary = self.result.grr_summary
+        interpretation = summary.interpretation.lower()
+        status = "default"
+        if "excellent" in interpretation or "good" in interpretation:
+            status = "good"
+        elif "acceptable" in interpretation or "marginal" in interpretation:
+            status = "average"
+        elif "poor" in interpretation or "unacceptable" in interpretation:
+            status = "poor"
+
         self.grr_sv_label.setText(f"{_format_sig(summary.total_gage_rr_pct_study_var)}%")
         self.grr_tol_label.setText(f"{_format_sig(summary.total_gage_rr_pct_tolerance)}%" if summary.total_gage_rr_pct_tolerance is not None else "N/A")
         self.ndc_label.setText(_format_sig(summary.ndc))
-        self.interpretation_label.setText(summary.interpretation)
+        self.interpretation_badge.set_text_and_status(summary.interpretation, status)
 
         # Warnings
         self.warnings_text.setText("\n".join(self.result.warnings) or "No warnings.")

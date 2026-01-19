@@ -36,8 +36,8 @@ python -m msa_workbench
 
 ### MSA Analysis
 1.  Go to the **MSA Analysis** tab.
-2.  Click **Load CSV...** to load your measurement data.
-3.  Configure the analysis by selecting the response column, factors, part, and operator.
+2.  Click **Load CSV...** to load your measurement data. The application will automatically suggest a configuration for the response, factors, part, and operator based on common naming conventions.
+3.  Review and override any of the suggested settings as needed.
 4.  Choose the model type ("Crossed" or "Main Effects").
 5.  Optionally, provide specification limits (LSL/USL) or a tolerance value.
 6.  Click **Run Analysis**. The results will be displayed in the **Analysis Results** tab.

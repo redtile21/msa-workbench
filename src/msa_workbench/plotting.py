@@ -80,7 +80,7 @@ def get_variability_chart(result: MSAResult, ax: plt.Axes):
             first = group['x_pos'].min()
             last = group['x_pos'].max()
             center = (first + last) / 2
-            clean_inst_label = str(inst_val).replace(',', '').replace('(', '').replace(')', '')
+            clean_inst_label = str(inst_val).replace('\'', '').replace('(', '').replace(')', '')
             ax.text(center, y_offset_inst, clean_inst_label, transform=trans,
                     ha='center', va='top', fontsize=10, fontweight='bold')
             if last < len(unique_groups) - 1:
@@ -93,7 +93,7 @@ def get_variability_chart(result: MSAResult, ax: plt.Axes):
         first = group['x_pos'].min()
         last = group['x_pos'].max()
         center = (first + last) / 2
-        clean_op_label = str(op_val).replace(',', '').replace('(', '').replace(')', '')
+        clean_op_label = str(op_val).replace('\'', '').replace('(', '').replace(')', '')
         ax.text(center, y_offset_op, clean_op_label, transform=trans,
                 ha='center', va='top', fontsize=12, fontweight='bold')
         if last < len(unique_groups) - 1:
@@ -101,7 +101,6 @@ def get_variability_chart(result: MSAResult, ax: plt.Axes):
 
     ax.text(-0.01, y_offset_op, op_col, transform=trans_label, ha='right', va='top', fontsize=10, fontweight='bold')
     ax.figure.subplots_adjust(bottom=0.5 if inst_col else 0.4, right=0.9)
-    ax.figure.tight_layout(pad=3.0)
 
 
 def get_stddev_chart(result: MSAResult, ax: plt.Axes):
@@ -185,7 +184,7 @@ def get_stddev_chart(result: MSAResult, ax: plt.Axes):
     y_offset_op = -0.3 if inst_col else -0.2
 
     for i, row in unique_groups.iterrows():
-        clean_part_label = str(row[part_col]).replace(',', '').replace('(', '').replace(')', '')
+        clean_part_label = str(row[part_col]).replace('\'', '').replace('(', '').replace(')', '')
         ax.text(row['x_pos'], y_offset_part, clean_part_label, transform=trans, ha='center', va='top', fontsize=9,
                 rotation=90)
     ax.text(-0.01, y_offset_part, part_col, transform=trans_label, ha='right', va='top', fontsize=10, fontweight='bold')
@@ -195,7 +194,7 @@ def get_stddev_chart(result: MSAResult, ax: plt.Axes):
         for (op_val, inst_val), group in grouped_inst:
             first, last = group['x_pos'].min(), group['x_pos'].max()
             center = (first + last) / 2
-            clean_inst_label = str(inst_val).replace(',', '').replace('(', '').replace(')', '')
+            clean_inst_label = str(inst_val).replace('\'', '').replace('(', '').replace(')', '')
             ax.text(center, y_offset_inst, clean_inst_label, transform=trans, ha='center', va='top', fontsize=10,
                     fontweight='bold')
             if last < len(unique_groups) - 1:
@@ -207,10 +206,9 @@ def get_stddev_chart(result: MSAResult, ax: plt.Axes):
     for op_val, group in grouped_op:
         first, last = group['x_pos'].min(), group['x_pos'].max()
         center = (first + last) / 2
-        clean_op_label = str(op_val).replace(',', '').replace('(', '').replace(')', '')
+        clean_op_label = str(op_val).replace('\'', '').replace('(', '').replace(')', '')
         ax.text(center, y_offset_op, clean_op_label, transform=trans, ha='center', va='top', fontsize=12, fontweight='bold')
         if last < len(unique_groups) - 1:
             ax.axvline(x=last + 0.5, color='black', linestyle='-', linewidth=1.5)
     ax.text(-0.01, y_offset_op, op_col, transform=trans_label, ha='right', va='top', fontsize=10, fontweight='bold')
     ax.figure.subplots_adjust(bottom=0.5 if inst_col else 0.4, right=0.9)
-    ax.figure.tight_layout(pad=3.0)

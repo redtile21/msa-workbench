@@ -20,7 +20,8 @@ from PySide6.QtWidgets import (
     QTabWidget,
     QSplitter,
     QTextEdit,
-    QHeaderView
+    QHeaderView,
+    QScrollArea
 )
 from PySide6.QtCore import Qt
 
@@ -226,10 +227,21 @@ class MainWindow(QMainWindow):
 
         # Charts Tab
         charts_layout = QVBoxLayout(charts_tab)
+        
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        charts_layout.addWidget(scroll_area)
+        
+        charts_content = QWidget()
+        charts_content_layout = QVBoxLayout(charts_content)
+        scroll_area.setWidget(charts_content)
+
         self.variability_chart_canvas = MplCanvas(self)
+        self.variability_chart_canvas.setMinimumHeight(800)
         self.stddev_chart_canvas = MplCanvas(self)
-        charts_layout.addWidget(self.variability_chart_canvas)
-        charts_layout.addWidget(self.stddev_chart_canvas)
+        self.stddev_chart_canvas.setMinimumHeight(800)
+        charts_content_layout.addWidget(self.variability_chart_canvas)
+        charts_content_layout.addWidget(self.stddev_chart_canvas)
         
         # Export button
         self.export_button = QPushButton("Export PDF...")
@@ -431,6 +443,12 @@ class MainWindow(QMainWindow):
         self.anova_table.resizeColumnsToContents()
 
         # Charts
+        # Calculate dynamic width based on number of groups (approx 60px per group, min 800px)
+        n_groups = len(self.result.chart_data.stddev) if self.result.chart_data and self.result.chart_data.stddev is not None else 10
+        plot_width = max(800, n_groups * 60)
+        self.variability_chart_canvas.setMinimumWidth(plot_width)
+        self.stddev_chart_canvas.setMinimumWidth(plot_width)
+
         self.variability_chart_canvas.figure.clear()
         ax_var = self.variability_chart_canvas.figure.add_subplot(111)
         get_variability_chart(self.result, ax_var)

@@ -1,5 +1,6 @@
 import os
 import tempfile
+import matplotlib.pyplot as plt
 from fpdf import FPDF
 
 from msa_workbench.engine.msa_engine import MSAResult
@@ -111,24 +112,34 @@ def create_pdf_report(result: MSAResult) -> bytes:
 
     with tempfile.TemporaryDirectory() as tmpdir:
         # Variability Chart
-        fig_var = get_variability_chart(result)
+        fig_var, ax_var = plt.subplots(figsize=(10, 6))
+        get_variability_chart(result, ax_var)
         path_var = os.path.join(tmpdir, "var_chart.png")
         fig_var.savefig(path_var, bbox_inches='tight', dpi=100)
+        plt.close(fig_var)  # Close the figure to free memory
         pdf.image(path_var, x=10, w=190)
         pdf.ln(5)
 
         # Std Dev Chart
-        fig_std = get_stddev_chart(result)
+        fig_std, ax_std = plt.subplots(figsize=(10, 6))
+        get_stddev_chart(result, ax_std)
         path_std = os.path.join(tmpdir, "std_chart.png")
         fig_std.savefig(path_std, bbox_inches='tight', dpi=100)
+        plt.close(fig_std)  # Close the figure to free memory
         pdf.add_page()
         pdf.image(path_std, x=10, w=190)
 
-    # Fix: Handle return type for different FPDF versions
+    # Generate PDF output, handling different fpdf versions
     out = pdf.output(dest='S')
     if isinstance(out, str):
+        # Original fpdf returns a string that needs latin-1 encoding
         return out.encode('latin-1')
-    return bytes(out)
+    elif isinstance(out, (bytes, bytearray)):
+        # fpdf2 returns bytes or bytearray
+        return bytes(out)
+    else:
+        # Raise an error for unexpected types
+        raise TypeError(f"FPDF output generated an unexpected type: {type(out).__name__}")
 
 
 def save_pdf_report(result: MSAResult, output_path: str):

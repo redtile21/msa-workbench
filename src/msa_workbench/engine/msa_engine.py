@@ -111,14 +111,40 @@ def run_crossed_msa(df: pd.DataFrame, config: MSAConfig) -> MSAResult:
     n_factors = len(config.factor_cols)
 
     if config.model_type == 'main effects':
-        return _run_main_effects_msa(df, config)
+        warnings.warn("A true main-effects model is not supported. "
+                      "Running a 2-factor crossed model using only Part and Operator columns as a robust alternative.")
+        
+        # Create a new config for the 2-factor model
+        config_2_factor = MSAConfig(
+            response_col=config.response_col,
+            factor_cols=[config.part_col, config.operator_col],
+            part_col=config.part_col,
+            operator_col=config.operator_col,
+            lsl=config.lsl,
+            usl=config.usl,
+            tolerance=config.tolerance,
+            model_type="crossed"
+        )
+        return _run_crossed_msa_2factor(df, config_2_factor)
     
     if n_factors == 2:
         return _run_crossed_msa_2factor(df, config)
     elif n_factors == 3:
         return _run_crossed_msa_3factor(df, config)
-    else: # 4 factors
-        return _run_main_effects_msa(df, config)
+    else: # 4 factors, also treat as a simplified 2-factor model
+        warnings.warn("4-factor crossed models are not supported. "
+                      "Running a 2-factor crossed model using only Part and Operator columns as a robust alternative.")
+        config_2_factor = MSAConfig(
+            response_col=config.response_col,
+            factor_cols=[config.part_col, config.operator_col],
+            part_col=config.part_col,
+            operator_col=config.operator_col,
+            lsl=config.lsl,
+            usl=config.usl,
+            tolerance=config.tolerance,
+            model_type="crossed"
+        )
+        return _run_crossed_msa_2factor(df, config_2_factor)
 
 
 # =========================
@@ -133,6 +159,21 @@ def _run_crossed_msa_2factor(df: pd.DataFrame, config: MSAConfig) -> MSAResult:
     op = config.operator_col
     y = config.response_col
 
+    # --- Pre-computation for Diagnostics and Fallback ---
+    # Create a temporary result object just to get diagnostics
+    temp_diag = _build_result_object(df, config, {}, [], pd.Series(dtype=float), []).diagnostics
+    design_diag = temp_diag.get("design", {})
+    
+    is_unbalanced = design_diag.get("replicate_dist", {}).get("std", 0) > 0.1
+    is_incomplete = design_diag.get("missing_cells_pct", 0) > 1.0
+
+    if is_unbalanced or is_incomplete:
+        warnings.append("Unbalanced or incomplete design detected. Falling back to Mixed Model estimation.")
+        return _run_crossed_msa_mixed(df, config)
+
+    # --- ANOVA / EMS method for balanced designs ---
+    warnings.append("Balanced design detected. Using ANOVA/EMS method.")
+    
     # 1. Fit OLS for Initial ANOVA
     formula = f'Q("{y}") ~ C(Q("{part}")) + C(Q("{op}")) + C(Q("{part}")):C(Q("{op}"))'
     model = smf.ols(formula, data=df).fit()
@@ -151,11 +192,8 @@ def _run_crossed_msa_2factor(df: pd.DataFrame, config: MSAConfig) -> MSAResult:
     ms_res, df_res = _get_ms_df(anova, term_res)
 
     # 4. Correct F-Tests (Random Model)
-    #    Part F = MS_Part / MS_Int
-    #    Op F   = MS_Op   / MS_Int
     _update_anova_f_test(anova, term_part, ms_part, ms_int, df_part, df_int)
     _update_anova_f_test(anova, term_op, ms_op, ms_int, df_op, df_int)
-    #    Int F  = MS_Int  / MS_Res (Already correct in OLS, but we refresh it)
     _update_anova_f_test(anova, term_int, ms_int, ms_res, df_int, df_res)
 
     # 5. Clean Output
@@ -163,18 +201,14 @@ def _run_crossed_msa_2factor(df: pd.DataFrame, config: MSAConfig) -> MSAResult:
     anova_rows = _build_anova_rows(anova_clean)
 
     # --- Variance Components ---
-    n_parts = df[part].nunique()
-    n_ops = df[op].nunique()
-    reps_per_cell = df.groupby([part, op])[y].count().mean()
-    n_reps = int(round(reps_per_cell))
-
-    if abs(reps_per_cell - n_reps) > 0.05:
-        warnings.append(f"Unbalanced design ({reps_per_cell:.2f} reps/cell). Results may be approximate.")
+    n_parts = design_diag.get("level_counts", {}).get(part, 1)
+    n_ops = design_diag.get("level_counts", {}).get(op, 1)
+    n_reps = int(round(design_diag.get("replicate_dist", {}).get("mean", 1)))
 
     sig2_repeat = max(ms_res, 0.0)
-    sig2_part_op = max((ms_int - ms_res) / n_reps, 0.0)
-    sig2_op = max((ms_op - ms_int) / (n_parts * n_reps), 0.0)
-    sig2_part = max((ms_part - ms_int) / (n_ops * n_reps), 0.0)
+    sig2_part_op = max((ms_int - ms_res) / n_reps, 0.0) if n_reps > 0 else 0.0
+    sig2_op = max((ms_op - ms_int) / (n_parts * n_reps), 0.0) if n_parts > 0 and n_reps > 0 else 0.0
+    sig2_part = max((ms_part - ms_int) / (n_ops * n_reps), 0.0) if n_ops > 0 and n_reps > 0 else 0.0
 
     vc_map = {
         "Repeatability": sig2_repeat,
@@ -201,6 +235,20 @@ def _run_crossed_msa_3factor(df: pd.DataFrame, config: MSAConfig) -> MSAResult:
     fac_c = others[0]
     y = config.response_col
 
+    # --- Pre-computation for Diagnostics and Fallback ---
+    temp_diag = _build_result_object(df, config, {}, [], pd.Series(dtype=float), []).diagnostics
+    design_diag = temp_diag.get("design", {})
+    
+    is_unbalanced = design_diag.get("replicate_dist", {}).get("std", 0) > 0.1
+    is_incomplete = design_diag.get("missing_cells_pct", 0) > 1.0
+
+    if is_unbalanced or is_incomplete:
+        warnings.append("Unbalanced or incomplete design detected. Falling back to Mixed Model estimation.")
+        return _run_crossed_msa_mixed(df, config)
+
+    # --- ANOVA / EMS method for balanced designs ---
+    warnings.append("Balanced design detected. Using ANOVA/EMS method.")
+    
     # 1. Fit OLS for Initial ANOVA
     formula = (f'Q("{y}") ~ C(Q("{fac_a}")) + C(Q("{fac_b}")) + C(Q("{fac_c}")) + '
                f'C(Q("{fac_a}")):C(Q("{fac_b}")) + C(Q("{fac_a}")):C(Q("{fac_c}")) + C(Q("{fac_b}")):C(Q("{fac_c}")) + '
@@ -223,39 +271,23 @@ def _run_crossed_msa_3factor(df: pd.DataFrame, config: MSAConfig) -> MSAResult:
     ms_A, df_A = _get_ms_df(anova, t_A)
     ms_B, df_B = _get_ms_df(anova, t_B)
     ms_C, df_C = _get_ms_df(anova, t_C)
-
     ms_AB, df_AB = _get_ms_df(anova, t_AB)
     ms_AC, df_AC = _get_ms_df(anova, t_AC)
     ms_BC, df_BC = _get_ms_df(anova, t_BC)
-
     ms_ABC, df_ABC = _get_ms_df(anova, t_ABC)
     ms_Res, df_Res = _get_ms_df(anova, t_Res)
 
     # 4. Correct F-Tests (3-Factor Random Model)
-    #    Level 3: 3-Way Interaction (ABC) vs Residual
     _update_anova_f_test(anova, t_ABC, ms_ABC, ms_Res, df_ABC, df_Res)
-
-    #    Level 2: 2-Way Interactions (AB, AC, BC) vs 3-Way Interaction (ABC)
     _update_anova_f_test(anova, t_AB, ms_AB, ms_ABC, df_AB, df_ABC)
     _update_anova_f_test(anova, t_AC, ms_AC, ms_ABC, df_AC, df_ABC)
     _update_anova_f_test(anova, t_BC, ms_BC, ms_ABC, df_BC, df_ABC)
-
-    #    Level 1: Main Effects vs Synthesized Denominator
-    #    Denominator = MS_AB + MS_AC - MS_ABC (Approximation for A)
-    #    Note: Depending on the specific pair (e.g., A is usually tested against AB+AC-ABC)
-
-    #    Synthesized Denominators:
-    #    Denom_A = MS_AB + MS_AC - MS_ABC
     ms_denom_A = ms_AB + ms_AC - ms_ABC
     df_denom_A = _satterthwaite_df(ms_AB, df_AB, ms_AC, df_AC, ms_ABC, df_ABC)
     _update_anova_f_test(anova, t_A, ms_A, ms_denom_A, df_A, df_denom_A)
-
-    #    Denom_B = MS_AB + MS_BC - MS_ABC
     ms_denom_B = ms_AB + ms_BC - ms_ABC
     df_denom_B = _satterthwaite_df(ms_AB, df_AB, ms_BC, df_BC, ms_ABC, df_ABC)
     _update_anova_f_test(anova, t_B, ms_B, ms_denom_B, df_B, df_denom_B)
-
-    #    Denom_C = MS_AC + MS_BC - MS_ABC
     ms_denom_C = ms_AC + ms_BC - ms_ABC
     df_denom_C = _satterthwaite_df(ms_AC, df_AC, ms_BC, df_BC, ms_ABC, df_ABC)
     _update_anova_f_test(anova, t_C, ms_C, ms_denom_C, df_C, df_denom_C)
@@ -265,26 +297,20 @@ def _run_crossed_msa_3factor(df: pd.DataFrame, config: MSAConfig) -> MSAResult:
     anova_rows = _build_anova_rows(anova_clean)
 
     # --- Variance Components ---
-    n_a = df[fac_a].nunique()
-    n_b = df[fac_b].nunique()
-    n_c = df[fac_c].nunique()
-    reps_per_cell = df.groupby([fac_a, fac_b, fac_c])[y].count().mean()
-    n_r = int(round(reps_per_cell))
-
-    if abs(reps_per_cell - n_r) > 0.05:
-        warnings.append(f"Unbalanced design ({reps_per_cell:.2f} reps/cell). ANOVA estimates may be biased.")
+    n_a = design_diag.get("level_counts", {}).get(fac_a, 1)
+    n_b = design_diag.get("level_counts", {}).get(fac_b, 1)
+    n_c = design_diag.get("level_counts", {}).get(fac_c, 1)
+    n_r = int(round(design_diag.get("replicate_dist", {}).get("mean", 1)))
 
     # EMS Solvers
     var_e = max(0.0, ms_Res)
-    var_abc = max(0.0, (ms_ABC - ms_Res) / n_r)
-
-    var_ab = max(0.0, (ms_AB - ms_ABC) / (n_r * n_c))
-    var_ac = max(0.0, (ms_AC - ms_ABC) / (n_r * n_b))
-    var_bc = max(0.0, (ms_BC - ms_ABC) / (n_r * n_a))
-
-    var_a = max(0.0, (ms_A - ms_AB - ms_AC + ms_ABC) / (n_r * n_b * n_c))
-    var_b = max(0.0, (ms_B - ms_AB - ms_BC + ms_ABC) / (n_r * n_a * n_c))
-    var_c = max(0.0, (ms_C - ms_AC - ms_BC + ms_ABC) / (n_r * n_a * n_b))
+    var_abc = max(0.0, (ms_ABC - ms_Res) / n_r) if n_r > 0 else 0.0
+    var_ab = max(0.0, (ms_AB - ms_ABC) / (n_r * n_c)) if n_r > 0 and n_c > 0 else 0.0
+    var_ac = max(0.0, (ms_AC - ms_ABC) / (n_r * n_b)) if n_r > 0 and n_b > 0 else 0.0
+    var_bc = max(0.0, (ms_BC - ms_ABC) / (n_r * n_a)) if n_r > 0 and n_a > 0 else 0.0
+    var_a = max(0.0, (ms_A - ms_AB - ms_AC + ms_ABC) / (n_r * n_b * n_c)) if n_r > 0 and n_b > 0 and n_c > 0 else 0.0
+    var_b = max(0.0, (ms_B - ms_AB - ms_BC + ms_ABC) / (n_r * n_a * n_c)) if n_r > 0 and n_a > 0 and n_c > 0 else 0.0
+    var_c = max(0.0, (ms_C - ms_AC - ms_BC + ms_ABC) / (n_r * n_a * n_b)) if n_r > 0 and n_a > 0 and n_b > 0 else 0.0
 
     vc_map = {
         "Repeatability": var_e,
@@ -301,52 +327,144 @@ def _run_crossed_msa_3factor(df: pd.DataFrame, config: MSAConfig) -> MSAResult:
 
 
 def _run_main_effects_msa(df: pd.DataFrame, config: MSAConfig) -> MSAResult:
-    warnings: List[str] = ["Running Main Effects Model."]
+    warnings: List[str] = ["Running Main Effects Model using MixedLM for variance components."]
+    diag: Dict[str, Any] = {}
     _validate_dataframe(df, config, warnings)
 
     y = config.response_col
     factors = config.factor_cols
     
-    formula = f'Q("{y}") ~ {" + ".join([f"C(Q(\'{f}\'))" for f in factors])}'
+    # --- 1. Variance Components Estimation using MixedLM ---
+    vc_formula = {f: f"0 + C(Q('{f}'))" for f in factors}
+    df_fit = df.assign(dummy_group=1)
+
+    model = smf.mixedlm(f'Q("{y}") ~ 1', df_fit, vc_formula=vc_formula, groups="dummy_group")
+    model_fit = None
     
-    model = smf.ols(formula, data=df).fit()
-    anova = anova_lm(model, typ=2)
+    try:
+        # First attempt with default optimizer
+        model_fit = model.fit(reml=True, method=["lbfgs"])
+        diag['convergence_method'] = 'REML (L-BFGS)'
+        if not getattr(model_fit, 'converged', False):
+            raise ValueError("Default optimizer failed to converge.")
+    except Exception as e:
+        warnings.append(f"Default REML fit failed: {e}. Trying Powell optimizer.")
+        try:
+            # Fallback to a more robust optimizer for variance components
+            model_fit = model.fit(reml=True, method='powell')
+            diag['convergence_method'] = 'REML (Powell)'
+        except Exception as e2:
+            warnings.append(f"Powell optimizer also failed: {e2}. Cannot compute variance components.")
+            diag['convergence_method'] = 'Failed'
+            return _build_result_object(df, config, {}, [], pd.Series(dtype=float), warnings, diag)
 
-    # Correct F-Tests
-    ms_res, df_res = _get_ms_df(anova, "Residual")
-    for factor in factors:
-        term = _find_term(anova, factor)
-        ms_fac, df_fac = _get_ms_df(anova, term)
-        _update_anova_f_test(anova, term, ms_fac, ms_res, df_fac, df_res)
-
-    anova_clean = _clean_anova_index(anova)
-    anova_rows = _build_anova_rows(anova_clean)
-
-    # Variance Components
-    vc_map = {"Repeatability": max(ms_res, 0.0)}
-    n_total = len(df)
+    # Extract variance components
+    vc_map = {}
+    vc_map["Repeatability"] = max(model_fit.scale, 0.0)
     
-    # Check for unbalance
-    reps_per_cell = df.groupby(factors)[y].count()
-    if reps_per_cell.nunique() > 1:
-        warnings.append(f"Unbalanced design ({reps_per_cell.mean():.2f} reps/cell). Results may be approximate.")
+    vcomp_values = model_fit.vcomp
+    vc_formula_keys = list(vc_formula.keys())
+    for i, factor_name in enumerate(vc_formula_keys):
+        variance = vcomp_values[i]
+        vc_map[factor_name] = max(variance, 0.0)
+        if variance < 0:
+            warnings.append(f"Variance component for '{factor_name}' was negative and truncated to 0.")
 
-    for factor in factors:
-        term = _find_term(anova, factor)
-        ms_fac, df_fac = _get_ms_df(anova, term)
+    diag['converged'] = getattr(model_fit, 'converged', False)
+    diag['hessian_available'] = getattr(model_fit, 'hessian', None) is not None
+    
+    # --- 2. Reference-Only ANOVA Table ---
+    warnings.append("ANOVA table is for reference only (based on a fixed-effects model) and not used for VC estimation.")
+    anova_rows = []
+    resid = pd.Series(dtype=float)
+    try:
+        ols_formula = f'Q("{y}") ~ {" + ".join([f"C(Q(\'{f}\'))" for f in factors])}'
+        ols_model = smf.ols(ols_formula, data=df).fit()
+        anova = anova_lm(ols_model, typ=2)
         
-        n_prime = n_total / df[factor].nunique()
+        ms_res, df_res = _get_ms_df(anova, "Residual")
+        for factor in factors:
+            term = _find_term(anova, factor)
+            ms_fac, df_fac = _get_ms_df(anova, term)
+            _update_anova_f_test(anova, term, ms_fac, ms_res, df_fac, df_res)
+            
+        anova_clean = _clean_anova_index(anova)
+        anova_rows = _build_anova_rows(anova_clean)
+        resid = ols_model.resid
+    except Exception as e:
+        warnings.append(f"Could not generate reference ANOVA table: {e}")
 
-        sig2_fac = max((ms_fac - ms_res) / n_prime, 0.0)
-        vc_map[factor] = sig2_fac
-
-    return _build_result_object(df, config, vc_map, anova_rows, model.resid, warnings)
+    # --- 3. Build Final Result Object ---
+    return _build_result_object(df, config, vc_map, anova_rows, resid, warnings, diag)
 
 
 def _run_crossed_msa_mixed(df: pd.DataFrame, config: MSAConfig) -> MSAResult:
-    warnings: List[str] = ["Using Iterative Mixed Model (4+ factors). Convergence may vary."]
+    warnings: List[str] = [
+        "Using Mixed-Effects Model (REML) due to unbalanced or incomplete design.",
+        "Interaction terms beyond 2-way are not included."
+    ]
+    diag: Dict[str, Any] = {}
     _validate_dataframe(df, config, warnings)
-    raise NotImplementedError("4+ factor support is experimental. Please stick to 2 or 3 factors.")
+
+    y = config.response_col
+    factors = config.factor_cols
+    
+    # --- 1. Variance Components Estimation using MixedLM ---
+    vc_formula = {}
+    # Add main effects
+    for factor in factors:
+        vc_formula[factor] = f"0 + C(Q('{factor}'))"
+    # Add 2-way interactions
+    for fac1, fac2 in combinations(factors, 2):
+        vc_formula[f"{fac1}:{fac2}"] = f"0 + C(Q('{fac1}')):C(Q('{fac2}'))"
+        
+    df_fit = df.assign(dummy_group=1)
+
+    model = smf.mixedlm(f'Q("{y}") ~ 1', df_fit, vc_formula=vc_formula, groups="dummy_group")
+    model_fit = None
+    
+    try:
+        model_fit = model.fit(reml=True, method='powell')
+        diag['convergence_method'] = 'REML (Powell)'
+    except Exception as e:
+        warnings.append(f"MixedLM fit failed: {e}. Variance components may be inaccurate.")
+        # Return a dummy result if the fit fails completely
+        return _build_result_object(df, config, {}, [], pd.Series(dtype=float), warnings, diag)
+
+    # Extract variance components
+    vc_map = {}
+    vc_map["Repeatability"] = max(model_fit.scale, 0.0)
+    
+    vcomp_values = model_fit.vcomp
+    vc_formula_keys = list(vc_formula.keys())
+    for i, key in enumerate(vc_formula_keys):
+        variance = vcomp_values[i]
+        vc_map[key] = max(variance, 0.0)
+        if variance < 0:
+            warnings.append(f"Variance component for '{key}' was negative and truncated to 0.")
+
+    diag['converged'] = getattr(model_fit, 'converged', False)
+    diag['hessian_available'] = getattr(model_fit, 'hessian', None) is not None
+    
+    # --- 2. Reference-Only ANOVA Table (from a simpler OLS model) ---
+    warnings.append("ANOVA table is for reference only and not used for VC estimation.")
+    anova_rows = []
+    resid = pd.Series(dtype=float)
+    try:
+        # Full interaction model for anova table can be too big, use 2-way int.
+        interaction_terms = [f"C(Q('{f1}')):C(Q('{f2}'))" for f1, f2 in combinations(factors, 2)]
+        main_terms = [f"C(Q('{f}'))" for f in factors]
+        ols_formula = f'Q("{y}") ~ {" + ".join(main_terms)} + {" + ".join(interaction_terms)}'
+        ols_model = smf.ols(ols_formula, data=df).fit()
+        anova = anova_lm(ols_model, typ=2)
+        anova_clean = _clean_anova_index(anova)
+        anova_rows = _build_anova_rows(anova_clean)
+        resid = ols_model.resid
+    except Exception as e:
+        warnings.append(f"Could not generate reference ANOVA table: {e}")
+
+    # --- 3. Build Final Result Object ---
+    return _build_result_object(df, config, vc_map, anova_rows, resid, warnings, diag)
 
 # =========================
 # HELPER FUNCTIONS
@@ -436,7 +554,7 @@ def _update_anova_f_test(anova, term, ms_num, ms_denom, df_num, df_denom):
     anova.loc[term, "PR(>F)"] = p_value
 
 
-def _build_result_object(df, config, vc_map, anova_rows, resid, warnings):
+def _build_result_object(df, config, vc_map, anova_rows, resid, warnings, diag: Optional[Dict[str, Any]] = None):
     part = config.part_col
     op = config.operator_col
 
@@ -455,7 +573,10 @@ def _build_result_object(df, config, vc_map, anova_rows, resid, warnings):
     sig2_gage = sig2_repeat + sig2_repro
     sig2_total = sig2_gage + sig2_part
 
-    sigmas = {k: np.sqrt(v) for k, v in vc_map.items()}
+    # Ensure all keys exist before taking sqrt
+    all_vc_keys = list(vc_map.keys())
+    sigmas = {k: np.sqrt(vc_map.get(k, 0.0)) for k in all_vc_keys}
+    
     sigma_gage = np.sqrt(sig2_gage)
     sigma_part = np.sqrt(sig2_part)
     sigma_total = np.sqrt(sig2_total)
@@ -474,8 +595,8 @@ def _build_result_object(df, config, vc_map, anova_rows, resid, warnings):
     vc_rows = []
 
     vc_rows.append(VarianceComponentRow(
-        "Repeatability", sig2_repeat, sigmas["Repeatability"], 6.0 * sigmas["Repeatability"],
-        get_pct_contrib(sig2_repeat), get_pct_sv(sigmas["Repeatability"]), get_pct_tol(sigmas["Repeatability"])
+        "Repeatability", sig2_repeat, sigmas.get("Repeatability", 0.0), 6.0 * sigmas.get("Repeatability", 0.0),
+        get_pct_contrib(sig2_repeat), get_pct_sv(sigmas.get("Repeatability", 0.0)), get_pct_tol(sigmas.get("Repeatability", 0.0))
     ))
     
     if config.model_type == 'crossed':
@@ -485,8 +606,8 @@ def _build_result_object(df, config, vc_map, anova_rows, resid, warnings):
 
     for k in repro_keys:
         vc_rows.append(VarianceComponentRow(
-            f"Reproducibility: {k}", vc_map[k], sigmas[k], 6.0 * sigmas[k],
-            get_pct_contrib(vc_map[k]), get_pct_sv(sigmas[k]), get_pct_tol(sigmas[k])
+            f"Reproducibility: {k}", vc_map.get(k, 0.0), sigmas.get(k, 0.0), 6.0 * sigmas.get(k, 0.0),
+            get_pct_contrib(vc_map.get(k, 0.0)), get_pct_sv(sigmas.get(k, 0.0)), get_pct_tol(sigmas.get(k, 0.0))
         ))
 
     vc_rows.append(VarianceComponentRow(
@@ -516,16 +637,33 @@ def _build_result_object(df, config, vc_map, anova_rows, resid, warnings):
 
     chart_data = _build_chart_data(df, config)
 
-    n_ops = df[op].nunique() if op and op in df.columns else np.nan
-
-    diag = {
-        "n_parts": df[part].nunique(),
-        "n_operators": n_ops,
-        "n_reps_mean": df.groupby(config.factor_cols)[config.response_col].count().mean(),
-        "residual_normality_pvalue": _shapiro_safe(resid, warnings)
+    # --- Diagnostics ---
+    final_diag = diag.copy() if diag is not None else {}
+    
+    # Design diagnostics
+    level_counts = {f: df[f].nunique() for f in config.factor_cols}
+    expected_cells = np.prod(list(level_counts.values()))
+    reps_per_cell = df.groupby(config.factor_cols).size()
+    actual_cells = len(reps_per_cell)
+    
+    design_diag = {
+        "level_counts": level_counts,
+        "replicate_dist": {
+            "min": reps_per_cell.min(),
+            "mean": reps_per_cell.mean(),
+            "max": reps_per_cell.max(),
+            "std": reps_per_cell.std(),
+        },
+        "expected_cells": expected_cells,
+        "actual_cells": actual_cells,
+        "missing_cells_pct": (1 - actual_cells / expected_cells) * 100 if expected_cells > 0 else 0,
     }
+    final_diag["design"] = design_diag
+    
+    # Standard diagnostics
+    final_diag.setdefault("residual_normality_pvalue", _shapiro_safe(resid, warnings))
 
-    return MSAResult(config, anova_rows, vc_rows, summary, chart_data, diag, warnings)
+    return MSAResult(config, anova_rows, vc_rows, summary, chart_data, final_diag, warnings)
 
 
 def _get_ms_fuzzy(anova, cols) -> float:

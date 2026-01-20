@@ -14,8 +14,8 @@ classifiers = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/user/repo.git"
-"Bug Tracker" = "https://github.com/user/repo.git/issues"
+"Homepage" = "https://github.com/redtile21/msa-workbench.git"
+"Bug Tracker" = "https://github.com/redtile21/msa-workbench.git/issues"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

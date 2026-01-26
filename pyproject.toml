@@ -1,6 +1,6 @@
 [project]
 name = "msa-workbench"
-version = "0.1.0"
+version = "0.20"
 authors = [
   { name="Gemini", email="gemini@google.com" },
 ]

@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 
 from msa_workbench.ui.dataframe_model import DataFrameModel
-from msa_workbench.engine.msa_engine import MSAConfig, run_crossed_msa, MSAResult
+from msa_workbench.engine.msa_engine import MSAConfig, run_msa, MSAResult
 from msa_workbench.ui.widgets.mpl_canvas import MplCanvas
 from msa_workbench.ui.widgets.status_badge import StatusBadge
 from msa_workbench.ui.widgets.indentation_delegate import IndentationDelegate
@@ -367,7 +367,7 @@ class MainWindow(QMainWindow):
                 tolerance=tolerance,
                 model_type=self.model_type_combo.currentText().lower()
             )
-            self.result = run_crossed_msa(self.df.copy(), config)
+            self.result = run_msa(self.df.copy(), config)
             self._update_results_ui()
             self.export_button.setEnabled(True)
             self.main_tabs.setCurrentWidget(self.results_page)

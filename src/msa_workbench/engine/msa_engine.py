@@ -73,7 +73,7 @@ class VarianceComponentRow:
 class GRRSummary:
     total_gage_rr_pct_study_var: float
     total_gage_rr_pct_tolerance: Optional[float]
-    ndc: Optional[float]
+    ndc: int
     interpretation: str
 
 

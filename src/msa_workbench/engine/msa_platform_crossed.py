@@ -1,4 +1,3 @@
-# msa_platform_crossed.py
 from __future__ import annotations
 
 from typing import Dict, Any, List, Optional
@@ -13,6 +12,7 @@ from .msa_utils import (
     validate_dataframe,
     design_diagnostics,
     is_balanced_and_complete,
+    canonical_vc_term,
     clean_anova_index,
     find_term,
     get_ms_df,
@@ -31,7 +31,7 @@ def run_crossed_2factor(df: pd.DataFrame, config, ANOVATableRow, VarianceCompone
     op = config.operator_col
     y = config.response_col
 
-    diag = {"platform": "crossed_2factor"}
+    diag: Dict[str, Any] = {"platform": "crossed_2factor"}
     design_diag = design_diagnostics(df2, config.factor_cols)
     diag["design"] = design_diag
 
@@ -70,7 +70,13 @@ def run_crossed_2factor(df: pd.DataFrame, config, ANOVATableRow, VarianceCompone
     sig2_op = max((ms_op - ms_int) / (n_parts * n_reps), 0.0) if n_parts > 0 and n_reps > 0 else 0.0
     sig2_part = max((ms_part - ms_int) / (n_ops * n_reps), 0.0) if n_ops > 0 and n_reps > 0 else 0.0
 
-    vc_map = {"Repeatability": sig2_repeat, f"{op}": sig2_op, f"{part}:{op}": sig2_part_op, f"{part}": sig2_part}
+    int_key = canonical_vc_term(f"{part}:{op}", factor_order=config.factor_cols)
+    vc_map = {
+        "Repeatability": sig2_repeat,
+        f"{op}": sig2_op,
+        int_key: sig2_part_op,
+        f"{part}": sig2_part,
+    }
 
     return build_result_object(
         df2, config, vc_map, anova_rows, model.resid, warnings, diag,
@@ -165,10 +171,10 @@ def run_crossed_3factor(df: pd.DataFrame, config, ANOVATableRow, VarianceCompone
         f"{fac_a}": var_a,
         f"{fac_b}": var_b,
         f"{fac_c}": var_c,
-        f"{fac_a}:{fac_b}": var_ab,
-        f"{fac_a}:{fac_c}": var_ac,
-        f"{fac_b}:{fac_c}": var_bc,
-        f"{fac_a}:{fac_b}:{fac_c}": var_abc,
+        canonical_vc_term(f"{fac_a}:{fac_b}", factor_order=config.factor_cols): var_ab,
+        canonical_vc_term(f"{fac_a}:{fac_c}", factor_order=config.factor_cols): var_ac,
+        canonical_vc_term(f"{fac_b}:{fac_c}", factor_order=config.factor_cols): var_bc,
+        canonical_vc_term(f"{fac_a}:{fac_b}:{fac_c}", factor_order=config.factor_cols): var_abc,
     }
 
     return build_result_object(
@@ -177,14 +183,20 @@ def run_crossed_3factor(df: pd.DataFrame, config, ANOVATableRow, VarianceCompone
     )
 
 
-def run_crossed_mixed(df: pd.DataFrame, config, ANOVATableRow, VarianceComponentRow, GRRSummary, ChartData, MSAResult, warnings: Optional[List[str]] = None):
-    """
-    Mixed model variance components for unbalanced/incomplete crossed designs.
+def run_crossed_mixed(
+    df: pd.DataFrame,
+    config,
+    ANOVATableRow,
+    VarianceComponentRow,
+    GRRSummary,
+    ChartData,
+    MSAResult,
+    warnings: Optional[List[str]] = None,
+):
+    """Mixed model variance components for unbalanced/incomplete crossed designs.
+
     Keeps interaction terms limited to 2-way (same behavior as prior engine).
     """
-    import statsmodels.formula.api as smf
-    from statsmodels.stats.anova import anova_lm
-
     warnings = list(warnings or [])
     warnings.extend(
         [
@@ -240,19 +252,50 @@ def run_crossed_mixed(df: pd.DataFrame, config, ANOVATableRow, VarianceComponent
             VarianceComponentRow, GRRSummary, ChartData, MSAResult
         )
 
-    vc_map: Dict[str, float] = {"Repeatability": float(max(fit_res.scale, 0.0))}
+    # ------------------------------------------------------------
+    # Variance components
+    # ------------------------------------------------------------
+    # statsmodels returns variance components in the order of `fit_res.model.exog_vc.names`.
+    # This order is *not guaranteed* to match the insertion order of `vc_formula`.
+    vc_map: Dict[str, float] = {"Repeatability": float(max(getattr(fit_res, "scale", 0.0), 0.0))}
+
     vcomp_values = np.asarray(getattr(fit_res, "vcomp", []), dtype=float)
-    keys = list(vc_formula.keys())
-    for i, key in enumerate(keys):
-        if i >= vcomp_values.size:
-            break
-        vc_map[key] = float(max(vcomp_values[i], 0.0))
-        if vcomp_values[i] < 0:
-            warnings.append(f"Variance component for '{key}' was negative and truncated to 0.")
+    names = list(getattr(getattr(fit_res, "model", None), "exog_vc", object()).names) if hasattr(getattr(fit_res, "model", None), "exog_vc") else []
+
+    diag["vcomp_names"] = [str(n) for n in names]
+    diag["vcomp_values_raw"] = [float(v) for v in vcomp_values.tolist()] if vcomp_values.size else []
+
+    mapped = False
+    if names and len(names) == int(vcomp_values.size):
+        mapped = True
+        name_map: Dict[str, str] = {}
+        for name, val in zip(names, vcomp_values):
+            raw_name = str(name)
+            canon_name = canonical_vc_term(raw_name, factor_order=factors)
+            name_map[raw_name] = canon_name
+            vc_map[canon_name] = float(max(val, 0.0))
+            if val < 0:
+                warnings.append(f"Variance component for '{canon_name}' was negative and truncated to 0.")
+        diag["vcomp_name_map"] = name_map
+
+    if not mapped:
+        # Fallback: map by vc_formula keys, but still canonicalize terms.
+        warnings.append(
+            "WARNING: Could not reliably map MixedLM variance components by name; falling back to vc_formula key order. "
+            "This may lead to swapped components if statsmodels internal ordering differs."
+        )
+        keys = [canonical_vc_term(k, factor_order=factors) for k in list(vc_formula.keys())]
+        for i, key in enumerate(keys):
+            if i >= vcomp_values.size:
+                break
+            vc_map[key] = float(max(vcomp_values[i], 0.0))
+            if vcomp_values[i] < 0:
+                warnings.append(f"Variance component for '{key}' was negative and truncated to 0.")
+        diag["vcomp_mapping_fallback"] = True
 
     # Reference ANOVA table (fixed effects); do not use for estimation
     warnings.append("ANOVA table is for reference only and not used for VC estimation.")
-    anova_rows = []
+    anova_rows: List[Any] = []
     resid = pd.Series(dtype=float)
 
     try:

@@ -1,13 +1,49 @@
-# msa_utils.py
 from __future__ import annotations
 
-from typing import List, Optional, Dict, Any, Iterable, Tuple, Union
+from typing import List, Optional, Dict, Any, Iterable, Tuple, Union, Sequence
 from itertools import permutations
 import re
 
 import numpy as np
 import pandas as pd
 from scipy import stats
+
+
+def canonical_vc_term(term: str, factor_order: Optional[Sequence[str]] = None, sep: str = ":") -> str:
+    """Canonicalize a variance-component term name.
+
+    This is used to ensure interaction terms are consistently labeled regardless of:
+      - statsmodels internal ordering (e.g., returning "Instrument:Sample" vs "Sample:Instrument")
+      - user factor ordering
+
+    Rules:
+      - Non-interaction terms are returned unchanged.
+      - Interaction terms (containing `sep`) are split and re-joined in a deterministic order.
+      - If `factor_order` is provided, the interaction components are ordered by their index in `factor_order`
+        (unknown terms fall back to alphabetical).
+      - If `factor_order` is not provided, components are sorted alphabetically.
+    """
+    if term is None:
+        return ""
+    s = str(term).strip()
+    if sep not in s:
+        return s
+
+    parts = [p.strip() for p in s.split(sep) if str(p).strip()]
+    if len(parts) <= 1:
+        return s
+
+    if factor_order:
+        order = {str(f): i for i, f in enumerate(list(factor_order))}
+
+        def _key(p: str):
+            return (order.get(p, 10**9), p)
+
+        parts_sorted = sorted(parts, key=_key)
+    else:
+        parts_sorted = sorted(parts)
+
+    return sep.join(parts_sorted)
 
 
 def validate_dataframe(df: pd.DataFrame, response_col: str, factor_cols: List[str]) -> pd.DataFrame:
@@ -144,7 +180,16 @@ def build_anova_rows(anova: pd.DataFrame, ANOVATableRow) -> List[Any]:
         ms = float(r.get("mean_sq", ss / df_val if df_val > 0 else 0.0))
         f = r.get("F", None)
         p = r.get("PR(>F)", None)
-        rows.append(ANOVATableRow(str(term), df_val, ss, ms, None if pd.isna(f) else float(f), None if pd.isna(p) else float(p)))
+        rows.append(
+            ANOVATableRow(
+                str(term),
+                df_val,
+                ss,
+                ms,
+                None if pd.isna(f) else float(f),
+                None if pd.isna(p) else float(p),
+            )
+        )
     return rows
 
 

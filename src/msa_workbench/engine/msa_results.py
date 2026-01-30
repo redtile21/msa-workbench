@@ -1,7 +1,8 @@
-# msa_results.py
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
+import math
+
 import numpy as np
 import pandas as pd
 
@@ -49,7 +50,6 @@ def build_result_object(
     MSAResult,
 ):
     part = config.part_col
-    op = config.operator_col
 
     sig2_repeat = float(vc_map.get("Repeatability", 0.0))
     sig2_part = float(vc_map.get(part, 0.0))
@@ -161,13 +161,17 @@ def build_result_object(
         )
     )
 
-    ndc = 1.41 * (sigma_part / sigma_gage) if sigma_gage > 0 else 0.0
+    # Match common industry/JMP definition:
+    #   ndc = floor( sqrt(2) * (PV / GRR) )
+    # where PV and GRR are standard deviations.
+    ndc = math.floor(math.sqrt(2.0) * (sigma_part / sigma_gage)) if sigma_gage > 0 else 0
+    ndc = int(max(0, ndc))
     grr_pct_sv = get_pct_sv(sigma_gage)
 
     summary = GRRSummary(
         total_gage_rr_pct_study_var=float(grr_pct_sv),
         total_gage_rr_pct_tolerance=get_pct_tol(sigma_gage),
-        ndc=float(ndc),
+        ndc=ndc,
         interpretation=interpret_grr(float(grr_pct_sv)),
     )
 
@@ -176,6 +180,9 @@ def build_result_object(
 
     final_diag: Dict[str, Any] = dict(diag or {})
     final_diag["design"] = design_diagnostics(df, config.factor_cols)
+    final_diag.setdefault("tolerance_value", getattr(config, "tolerance_value", None))
+    final_diag.setdefault("lsl", getattr(config, "lsl", None))
+    final_diag.setdefault("usl", getattr(config, "usl", None))
     final_diag.setdefault("residual_normality_pvalue", shapiro_safe(resid))
 
     return MSAResult(config, anova_rows, vc_rows, summary, chart_data, final_diag, warnings)

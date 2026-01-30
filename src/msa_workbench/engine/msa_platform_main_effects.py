@@ -54,11 +54,45 @@ def _fit_mixedlm_main_effects(
 
     for method, kw in tries:
         try:
-            res = model.fit(reml=True, method=method, **kw)
+            # Capture statsmodels convergence/boundary warnings; these are a strong signal that
+            # the REML solution is on/near the boundary and variance components can be inflated.
+            import warnings as py_warnings
+            from statsmodels.tools.sm_exceptions import ConvergenceWarning
+
+            with py_warnings.catch_warnings(record=True) as wlist:
+                py_warnings.simplefilter("always")
+                res = model.fit(reml=True, method=method, **kw)
+
             fit_res = res
             diag["optimizer"] = method
             diag["converged"] = bool(getattr(res, "converged", True))
             diag["llf"] = float(getattr(res, "llf", np.nan))
+
+            # Persist the warning messages for diagnostics
+            diag["fit_warnings"] = [
+                {"category": getattr(w.category, "__name__", str(w.category)), "message": str(w.message)}
+                for w in wlist
+            ]
+
+            # Heuristic stability flag: any ConvergenceWarning / boundary / non-PD Hessian
+            unstable = False
+            if not diag.get("converged", True):
+                unstable = True
+            for w in wlist:
+                msg = str(w.message)
+                if issubclass(w.category, ConvergenceWarning):
+                    unstable = True
+                if "not positive definite" in msg.lower() and "hessian" in msg.lower():
+                    unstable = True
+                if "boundary" in msg.lower():
+                    unstable = True
+            diag["unstable"] = bool(unstable)
+
+            if diag["unstable"]:
+                warnings.append(
+                    "MixedLM fit emitted convergence/boundary warnings (e.g., non-positive definite Hessian). "
+                    "Variance components may be unreliable."
+                )
             break
         except Exception as e:
             fit_errors.append(f"{method}: {e}")
@@ -178,27 +212,63 @@ def run_main_effects(df: pd.DataFrame, config, ANOVATableRow, VarianceComponentR
         negatives = {k: v for k, v in raw_vc.items() if v < 0}
         if negatives:
             warnings.append(
-                "Negative EMS variance component(s) detected; switching to Mixed-Effects (REML) estimation: "
+                "Negative EMS variance component(s) detected; attempting Mixed-Effects (REML) estimation: "
                 + ", ".join([f"{k}={v:.6g}" for k, v in negatives.items()])
             )
+
             mixed_vc, mixed_diag, mixed_warn = _fit_mixedlm_main_effects(df2, y, factors)
             warnings.extend(mixed_warn)
+
+            # If the REML fit is unstable / on the boundary (common when the true VC is ~0),
+            # prefer Bayesian shrinkage estimates. This matches JMP's behavior when it reports:
+            # "Switching to Bayesian estimates because of negative REML variance component(s)."
+            use_bayes = False
+
             if mixed_vc is not None:
-                vc_map = mixed_vc
-                diag["mixedlm"] = mixed_diag
-                diag["method"] = "mixedlm_reml"
+                # If EMS says a component is negative, it's usually near zero. If MixedLM returns
+                # a comparatively large VC for such a factor, treat it as suspicious.
+                rep = float(mixed_vc.get("Repeatability", 0.0))
+                suspicious: List[str] = []
+                for k in negatives.keys():
+                    est = float(mixed_vc.get(k, 0.0))
+                    if rep > 0 and est > 0.5 * rep:
+                        suspicious.append(f"{k}={est:.6g}")
+
+                if bool(mixed_diag.get("unstable")):
+                    use_bayes = True
+                    warnings.append(
+                        "MixedLM fit appears unstable (convergence/boundary warnings). "
+                        "Switching to Bayesian variance component estimates (JMP-like fallback)."
+                    )
+                elif suspicious:
+                    use_bayes = True
+                    warnings.append(
+                        "MixedLM produced large variance component(s) for factor(s) with negative EMS estimates: "
+                        + ", ".join(suspicious)
+                        + ". Switching to Bayesian variance component estimates (JMP-like fallback)."
+                    )
+                else:
+                    vc_map = mixed_vc
+                    diag["mixedlm"] = mixed_diag
+                    diag["method"] = "mixedlm_reml"
             else:
-                warnings.append("MixedLM failed; falling back to Bayesian variance components (median).")
+                use_bayes = True
+                warnings.append("MixedLM failed; switching to Bayesian variance components (JMP-like fallback).")
+
+            if use_bayes:
                 post, gibbs_diag = gibbs_random_intercepts_main_effects(
                     df2, y, factors,
                     seed=0, draws=3000, burn=1000,
-                    summary_stat="median",
+                    a0=2.1,
+                    summary_stat="mean",
                 )
                 vc_map = {"Repeatability": float(post["Residual"])}
                 for f in factors:
                     vc_map[f] = float(post[f])
+
                 diag["bayes"] = gibbs_diag.__dict__
                 diag["method"] = "bayesian"
+
         else:
             # truncate any small negatives due to numeric noise
             for f in factors:
@@ -210,16 +280,24 @@ def run_main_effects(df: pd.DataFrame, config, ANOVATableRow, VarianceComponentR
         mixed_vc, mixed_diag, mixed_warn = _fit_mixedlm_main_effects(df2, y, factors)
         warnings.extend(mixed_warn)
 
-        if mixed_vc is not None:
+        if mixed_vc is not None and not bool(mixed_diag.get("unstable")):
             vc_map = mixed_vc
             diag["mixedlm"] = mixed_diag
             diag["method"] = "mixedlm_reml"
         else:
-            warnings.append("MixedLM failed; falling back to Bayesian variance components (median).")
+            if mixed_vc is None:
+                warnings.append("MixedLM failed; falling back to Bayesian variance components (JMP-like fallback).")
+            else:
+                warnings.append(
+                    "MixedLM fit appears unstable (convergence/boundary warnings). "
+                    "Falling back to Bayesian variance components (JMP-like fallback)."
+                )
+
             post, gibbs_diag = gibbs_random_intercepts_main_effects(
                 df2, y, factors,
                 seed=0, draws=3000, burn=1000,
-                summary_stat="median",
+                a0=2.1,
+                summary_stat="mean",
             )
             vc_map = {"Repeatability": float(post["Residual"])}
             for f in factors:

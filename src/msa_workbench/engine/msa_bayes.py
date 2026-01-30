@@ -26,7 +26,7 @@ def gibbs_random_intercepts_main_effects(
     seed: int = 0,
     draws: int = 3000,
     burn: int = 1000,
-    a0: float = 1e-3,
+    a0: float = 2.0,
     b0: Optional[float] = None,
     summary_stat: str = "mean",
 ) -> Tuple[Dict[str, float], GibbsDiagnostics]:
@@ -45,7 +45,9 @@ def gibbs_random_intercepts_main_effects(
       - each factor name (sigma_j^2)
 
     Note:
-      The default prior (a0=1e-3) is extremely heavy-tailed. For small numbers of levels
+      The default prior (a0=2.0) yields a finite posterior mean and tends to better match JMP's
+      'Bayesian estimates' fallback when REML produces negative/unstable variance components.
+      If you want a more diffuse prior, you can lower `a0`, but for small numbers of levels
       (e.g., a 2-level factor), the posterior mean of sigma^2 can be unstable.
       When matching JMP/REML results, `summary_stat="median"` is often a better choice.
     """

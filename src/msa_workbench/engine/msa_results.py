@@ -10,11 +10,12 @@ from .msa_utils import design_diagnostics, shapiro_safe
 
 
 def interpret_grr(val: float) -> str:
+    """Interpret %GRR (as %Study Variation) using AIAG-style thresholds."""
     if val < 10:
-        return "Excellent"
-    if val < 30:
         return "Acceptable"
-    return "Poor"
+    if val < 30:
+        return "Marginal"
+    return "Unacceptable"
 
 
 def build_chart_data(df: pd.DataFrame, response_col: str, factor_cols: List[str], part_col: str, operator_col: Optional[str]):

@@ -6,7 +6,7 @@ from msa_workbench.ui.theme import apply_theme
 def main():
     print("Starting QApplication...")
     app = QApplication(sys.argv)
-    # apply_theme(app)
+    apply_theme(app)
     print("Creating MainWindow...")
     window = MainWindow()
     print("Showing MainWindow...")

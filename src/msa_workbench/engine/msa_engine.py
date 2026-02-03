@@ -71,6 +71,8 @@ class ANOVATableRow:
     ms: float
     f: Optional[float]
     p: Optional[float]
+    mean: Optional[float] = None
+    std_dev: Optional[float] = None
 
 
 @dataclass

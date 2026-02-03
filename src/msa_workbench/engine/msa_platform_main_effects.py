@@ -289,7 +289,9 @@ def run_main_effects(
             ms_f, df_f = get_ms_df(anova_ref, term)
             update_anova_f_test(anova_ref, term, ms_f, ms_res, df_f, df_res)
 
-        anova_rows = build_anova_rows(clean_anova_index(anova_ref), ANOVATableRow)
+        anova_rows = build_anova_rows(
+            clean_anova_index(anova_ref), ANOVATableRow, df2, y, factors
+        )
         resid = ols_ref.resid
     except Exception as e:
         warnings.append(f"Could not generate reference ANOVA table: {e}")
@@ -355,7 +357,9 @@ def run_main_effects(
         ms_res, _ = get_ms_df(anova_nested, "Residual")
 
         # Overwrite reference ANOVA with nested ANOVA for this EMS path
-        anova_rows = build_anova_rows(clean_anova_index(anova_nested), ANOVATableRow)
+        anova_rows = build_anova_rows(
+            clean_anova_index(anova_nested), ANOVATableRow, df2, y, factors
+        )
         resid = nested_model.resid
 
         # Branching means along the chain edges

@@ -15,16 +15,20 @@ def create_pdf_report(result: MSAResult) -> bytes:
             return "N/A"
         return "{:.4g}".format(val)
 
+    def _sanitize_text_for_pdf(text):
+        # Encode to latin-1, replacing unencodable characters, then decode back to string
+        return str(text).encode('latin-1', errors='replace').decode('latin-1')
+
     class PDF(FPDF):
         def header(self):
             self.set_font('Arial', 'B', 15)
-            self.cell(0, 10, 'Gage R&R Report', 0, 1, 'C')
+            self.cell(0, 10, _sanitize_text_for_pdf('Gage R&R Report'), 0, 1, 'C')
             self.ln(5)
 
         def footer(self):
             self.set_y(-15)
             self.set_font('Arial', 'I', 8)
-            self.cell(0, 10, f'Page {self.page_no()}', 0, 0, 'C')
+            self.cell(0, 10, _sanitize_text_for_pdf(f'Page {self.page_no()}'), 0, 0, 'C')
 
     pdf = PDF()
     pdf.add_page()
@@ -32,39 +36,39 @@ def create_pdf_report(result: MSAResult) -> bytes:
 
     # 1. Summary Metrics
     pdf.set_font("Arial", 'B', 12)
-    pdf.cell(0, 10, "Summary Metrics", 0, 1)
+    pdf.cell(0, 10, _sanitize_text_for_pdf("Summary Metrics"), 0, 1)
     pdf.set_font("Arial", size=10)
 
     summary = result.grr_summary
-    pdf.cell(60, 10, f"Gage R&R (%SV): {_format_sig(summary.total_gage_rr_pct_study_var)}%", 1)
-    pdf.cell(60, 10, f"Gage R&R (%Tol): {_format_sig(summary.total_gage_rr_pct_tolerance)}%" if summary.total_gage_rr_pct_tolerance is not None else "N/A", 1)
-    pdf.cell(60, 10, f"ndc: {_format_sig(summary.ndc)}", 1)
+    pdf.cell(60, 10, _sanitize_text_for_pdf(f"Gage R&R (%SV): {_format_sig(summary.total_gage_rr_pct_study_var)}%"), 1)
+    pdf.cell(60, 10, _sanitize_text_for_pdf(f"Gage R&R (%Tol): {_format_sig(summary.total_gage_rr_pct_tolerance)}%" if summary.total_gage_rr_pct_tolerance is not None else "N/A"), 1)
+    pdf.cell(60, 10, _sanitize_text_for_pdf(f"ndc: {_format_sig(summary.ndc)}"), 1)
     pdf.ln(15)
 
-    pdf.multi_cell(0, 10, f"Interpretation: {result.grr_summary.interpretation}")
+    pdf.multi_cell(0, 10, _sanitize_text_for_pdf(f"Interpretation: {result.grr_summary.interpretation}"))
     pdf.ln(5)
 
     # 2. Variance Components
     pdf.set_font("Arial", 'B', 12)
-    pdf.cell(0, 10, "Variance Components", 0, 1)
+    pdf.cell(0, 10, _sanitize_text_for_pdf("Variance Components"), 0, 1)
     pdf.set_font("Arial", size=8)
 
     # Header
     cols = ["Source", "Variance Comp.", "Std. Dev.", "6 * Std. Dev.", "% Contribution", "% Study Var", "% Tolerance"]
     col_widths = [45, 25, 25, 25, 25, 25, 25]
     for i, h in enumerate(cols):
-        pdf.cell(col_widths[i], 7, h, 1, 0, 'C')
+        pdf.cell(col_widths[i], 7, _sanitize_text_for_pdf(h), 1, 0, 'C')
     pdf.ln()
 
     pdf.set_font("Arial", size=8)
     for r in result.var_components:
-        pdf.cell(col_widths[0], 6, r.source, 1)
-        pdf.cell(col_widths[1], 6, _format_sig(r.var_comp), 1, 0, 'R')
-        pdf.cell(col_widths[2], 6, _format_sig(r.std_dev), 1, 0, 'R')
-        pdf.cell(col_widths[3], 6, _format_sig(r.variability), 1, 0, 'R')
-        pdf.cell(col_widths[4], 6, _format_sig(r.pct_contribution), 1, 0, 'R')
-        pdf.cell(col_widths[5], 6, _format_sig(r.pct_study_var), 1, 0, 'R')
-        pdf.cell(col_widths[6], 6, _format_sig(r.pct_tolerance), 1, 0, 'R')
+        pdf.cell(col_widths[0], 6, _sanitize_text_for_pdf(r.source), 1)
+        pdf.cell(col_widths[1], 6, _sanitize_text_for_pdf(_format_sig(r.var_comp)), 1, 0, 'R')
+        pdf.cell(col_widths[2], 6, _sanitize_text_for_pdf(_format_sig(r.std_dev)), 1, 0, 'R')
+        pdf.cell(col_widths[3], 6, _sanitize_text_for_pdf(_format_sig(r.variability)), 1, 0, 'R')
+        pdf.cell(col_widths[4], 6, _sanitize_text_for_pdf(_format_sig(r.pct_contribution)), 1, 0, 'R')
+        pdf.cell(col_widths[5], 6, _sanitize_text_for_pdf(_format_sig(r.pct_study_var)), 1, 0, 'R')
+        pdf.cell(col_widths[6], 6, _sanitize_text_for_pdf(_format_sig(r.pct_tolerance)), 1, 0, 'R')
         pdf.ln()
     pdf.ln(5)
 
@@ -78,44 +82,46 @@ def create_pdf_report(result: MSAResult) -> bytes:
             pdf.set_text_color(150, 0, 0)
         else:
             pdf.set_text_color(0, 0, 0)
-        pdf.multi_cell(0, 5, msg)
+        pdf.multi_cell(0, 5, _sanitize_text_for_pdf(msg))
         pdf.ln(1)
     pdf.set_text_color(0, 0, 0)
     pdf.ln(5)
 
     # 3. ANOVA Table
     pdf.set_font("Arial", 'B', 12)
-    pdf.cell(0, 10, "ANOVA Table", 0, 1)
+    pdf.cell(0, 10, _sanitize_text_for_pdf("ANOVA Table"), 0, 1)
     pdf.set_font("Arial", size=8)
 
     # Header
-    cols = ["Source", "DF", "Sum of Sq.", "Mean Sq.", "F-Value", "P-Value"]
-    col_widths = [60, 15, 30, 30, 20, 20]
+    cols = ["Source", "DF", "Sum of Sq.", "Mean Sq.", "F-Value", "P-Value", "Mean", "Std. Dev."]
+    col_widths = [45, 15, 25, 25, 20, 20, 20, 20]
     for i, h in enumerate(cols):
-        pdf.cell(col_widths[i], 7, h, 1, 0, 'C')
+        pdf.cell(col_widths[i], 7, _sanitize_text_for_pdf(h), 1, 0, 'C')
     pdf.ln()
 
     for r in result.anova_table:
-        pdf.cell(col_widths[0], 6, r.term, 1)
-        pdf.cell(col_widths[1], 6, _format_sig(r.df), 1, 0, 'C')
-        pdf.cell(col_widths[2], 6, _format_sig(r.ss), 1, 0, 'R')
-        pdf.cell(col_widths[3], 6, _format_sig(r.ms), 1, 0, 'R')
-        pdf.cell(col_widths[4], 6, _format_sig(r.f), 1, 0, 'R')
-        pdf.cell(col_widths[5], 6, _format_sig(r.p), 1, 0, 'R')
+        pdf.cell(col_widths[0], 6, _sanitize_text_for_pdf(r.term), 1)
+        pdf.cell(col_widths[1], 6, _sanitize_text_for_pdf(_format_sig(r.df)), 1, 0, 'C')
+        pdf.cell(col_widths[2], 6, _sanitize_text_for_pdf(_format_sig(r.ss)), 1, 0, 'R')
+        pdf.cell(col_widths[3], 6, _sanitize_text_for_pdf(_format_sig(r.ms)), 1, 0, 'R')
+        pdf.cell(col_widths[4], 6, _sanitize_text_for_pdf(_format_sig(r.f)), 1, 0, 'R')
+        pdf.cell(col_widths[5], 6, _sanitize_text_for_pdf(_format_sig(r.p)), 1, 0, 'R')
+        pdf.cell(col_widths[6], 6, _sanitize_text_for_pdf(_format_sig(r.mean)), 1, 0, 'R')
+        pdf.cell(col_widths[7], 6, _sanitize_text_for_pdf(_format_sig(r.std_dev)), 1, 0, 'R')
         pdf.ln()
     pdf.ln(5)
 
     # 4. Charts
     pdf.add_page()
     pdf.set_font("Arial", 'B', 12)
-    pdf.cell(0, 10, "Charts", 0, 1)
+    pdf.cell(0, 10, _sanitize_text_for_pdf("Charts"), 0, 1)
 
     with tempfile.TemporaryDirectory() as tmpdir:
         # Variability Chart
         fig_var, ax_var = plt.subplots(figsize=(10, 6))
         get_variability_chart(result, ax_var)
         path_var = os.path.join(tmpdir, "var_chart.png")
-        fig_var.savefig(path_var, bbox_inches='tight', dpi=100)
+        fig_var.savefig(path_var, bbox_inches='tight', dpi=300)
         plt.close(fig_var)  # Close the figure to free memory
         pdf.image(path_var, x=10, w=190)
         pdf.ln(5)
@@ -124,23 +130,12 @@ def create_pdf_report(result: MSAResult) -> bytes:
         fig_std, ax_std = plt.subplots(figsize=(10, 6))
         get_stddev_chart(result, ax_std)
         path_std = os.path.join(tmpdir, "std_chart.png")
-        fig_std.savefig(path_std, bbox_inches='tight', dpi=100)
+        fig_std.savefig(path_std, bbox_inches='tight', dpi=300)
         plt.close(fig_std)  # Close the figure to free memory
         pdf.add_page()
         pdf.image(path_std, x=10, w=190)
 
-    # Generate PDF output, handling different fpdf versions
-    out = pdf.output(dest='S')
-    if isinstance(out, str):
-        # Original fpdf returns a string that needs latin-1 encoding
-        return out.encode('latin-1')
-    elif isinstance(out, (bytes, bytearray)):
-        # fpdf2 returns bytes or bytearray
-        return bytes(out)
-    else:
-        # Raise an error for unexpected types
-        raise TypeError(f"FPDF output generated an unexpected type: {type(out).__name__}")
-
+    return pdf.output()
 
 def save_pdf_report(result: MSAResult, output_path: str):
     """Generates and saves the PDF report to a file."""

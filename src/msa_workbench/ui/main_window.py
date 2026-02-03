@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 from PySide6.QtWidgets import (
+    QApplication,
     QMainWindow,
     QWidget,
     QVBoxLayout,
@@ -367,12 +368,26 @@ class MainWindow(QMainWindow):
                 tolerance=tolerance,
                 model_type=self.model_type_combo.currentText().lower()
             )
+            
+            # Notify user and switch tabs before running analysis
+            msg_box = QMessageBox(QMessageBox.Information, "Analysis Running", "The MSA analysis is now running...")
+            msg_box.setStandardButtons(QMessageBox.NoButton)
+            msg_box.setModal(False)
+            msg_box.show()
+            
+            self.main_tabs.setCurrentWidget(self.results_page)
+            QApplication.processEvents() # Allow UI to update
+
             self.result = run_msa(self.df.copy(), config)
             self._update_results_ui()
             self.export_button.setEnabled(True)
-            self.main_tabs.setCurrentWidget(self.results_page)
+            
+            msg_box.close() # Close the notification
+
         except Exception as e:
             QMessageBox.critical(self, "Analysis Error", f"Failed to run MSA: {e}")
+            if 'msg_box' in locals():
+                msg_box.close()
 
     def _update_results_ui(self):
         if self.result is None:
@@ -418,11 +433,13 @@ class MainWindow(QMainWindow):
                 var_comp_df[col] = var_comp_df[col].apply(_format_sig)
         self.var_comp_model.setDataFrame(var_comp_df)
         self.var_comp_table.resizeColumnsToContents()
+        self.var_comp_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.var_comp_table.horizontalHeader().setStretchLastSection(True)
         
         impacts = get_variation_impact_analysis(self.result)
         impact_html = ""
         for type_, msg in impacts:
-            color = "green" if type_ == "success" else ("red" if type_ == "error" else "black")
+            color = "green" if type_ == "success" else ("red" if type_ == "error" else "white")
             impact_html += f'<p style="color:{color};">{msg}</p>'
         self.impact_analysis_text.setHtml(impact_html)
 
@@ -435,12 +452,16 @@ class MainWindow(QMainWindow):
             "ms": "Mean Sq.",
             "f": "F-Value",
             "p": "P-Value",
+            "mean": "Mean",
+            "std_dev": "Std. Dev.",
         }, inplace=True)
         for col in anova_df.columns:
             if pd.api.types.is_numeric_dtype(anova_df[col]):
                 anova_df[col] = anova_df[col].apply(_format_sig)
         self.anova_model.setDataFrame(anova_df)
         self.anova_table.resizeColumnsToContents()
+        self.anova_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.anova_table.horizontalHeader().setStretchLastSection(True)
 
         # Charts
         # Calculate dynamic width based on number of groups (approx 60px per group, min 800px)

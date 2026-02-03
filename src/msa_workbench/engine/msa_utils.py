@@ -332,7 +332,13 @@ def update_anova_f_test(
     anova.loc[term, "PR(>F)"] = float(p_value)
 
 
-def build_anova_rows(anova: pd.DataFrame, ANOVATableRow) -> List[Any]:
+def build_anova_rows(
+    anova: pd.DataFrame,
+    ANOVATableRow,
+    df: pd.DataFrame,
+    response_col: str,
+    factor_cols: List[str],
+) -> List[Any]:
     rows = []
     for term, r in anova.iterrows():
         df_val = float(r["df"])
@@ -340,16 +346,41 @@ def build_anova_rows(anova: pd.DataFrame, ANOVATableRow) -> List[Any]:
         ms = float(r.get("mean_sq", ss / df_val if df_val > 0 else 0.0))
         f = r.get("F", None)
         p = r.get("PR(>F)", None)
+
+        mean_val, std_dev_val = None, None
+        term_str = str(term)
+        if term_str != "Residual":
+            try:
+                factors = [f for f in term_str.split(":") if f in factor_cols]
+                if factors:
+                    grouped = df.groupby(factors, observed=True)[response_col]
+                    mean_val = float(grouped.mean().mean())
+                    std_dev_val = float(grouped.std().mean())
+            except Exception:
+                pass  # Ignore if grouping fails for some terms
+
         rows.append(
             ANOVATableRow(
-                str(term),
+                term_str,
                 df_val,
                 ss,
                 ms,
                 None if pd.isna(f) else float(f),
                 None if pd.isna(p) else float(p),
+                mean=mean_val,
+                std_dev=std_dev_val,
             )
         )
+    
+    # Add a "Total" row
+    total_ss = float(anova["sum_sq"].sum())
+    total_df = float(anova["df"].sum())
+    total_mean = float(df[response_col].mean())
+    total_std = float(df[response_col].std())
+    rows.append(
+        ANOVATableRow("Total", total_df, total_ss, None, None, None, mean=total_mean, std_dev=total_std)
+    )
+
     return rows
 
 

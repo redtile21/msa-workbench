@@ -65,7 +65,7 @@ def get_variation_impact_analysis(result: MSAResult) -> list:
             impacts.append(("info", "- Instrument stability: allow warm-up/equilibration; check baseline noise, leaks/pressure issues, temperature control, detector saturation, and aging consumables (lamp/laser)."))
             impacts.append(("info", "- Consumables & fixtures: standardize tips/plates/cuvettes/seals and verify alignment/positioning (misalignment often looks like noise)."))
             impacts.append(("info", "- Mixing & homogeneity: standardize vortex speed/time, centrifuge/settle times, and ensure suspensions are uniformly mixed before aliquoting."))
-            impacts.append(("info", "- Environmental control: minimize humidity/temperature swings and evaporation—microvolume assays are especially sensitive."))
+            impacts.append(("info", "- Environmental control: minimize humidity/temperature swings and evaporation-microvolume assays are especially sensitive."))
             impacts.append(("info", "- Lock analysis settings: method version, peak integration/thresholds, curve-fit settings; avoid manual, subjective adjustments."))
 
         else:
@@ -85,4 +85,3 @@ def get_variation_impact_analysis(result: MSAResult) -> list:
             impacts.append(("info", "- Balance/randomize assignments: ensure each operator measures a balanced mix of parts to avoid operator/part confounding."))
 
     return impacts
-

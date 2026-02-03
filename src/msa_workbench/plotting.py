@@ -1,13 +1,14 @@
 import matplotlib.pyplot as plt
 import matplotlib.transforms as mtransforms
 import pandas as pd
+import re
 
 from msa_workbench.engine.msa_engine import MSAResult
 
 
 def _clean_label(val):
     """Removes common artifacts from stringified tuples/lists."""
-    return str(val).replace("'", "").replace("(", "").replace(")", "").replace(",", "")
+    return re.sub(r"['\"\[\]\(\),]", "", str(val))
 
 def get_variability_chart(result: MSAResult, ax: plt.Axes):
     """Generates the Variability Chart on the given Axes."""
@@ -58,12 +59,13 @@ def get_variability_chart(result: MSAResult, ax: plt.Axes):
     ax.text(1.01, lcl, f"LCL = {lcl:.2f}", transform=trans_annot,
             color='red', va='center', ha='left', fontsize=9, fontweight='bold')
 
-    ax.set_ylabel(y_col)
-    ax.set_title(f"Variability Chart: {y_col} by {', '.join(group_cols)}")
+    ax.set_ylabel(f"Response: {y_col}")
+    ax.set_title(f"Variability of {y_col} by {', '.join(group_cols)}")
     ax.set_xticks([])
     ax.set_xlim(-0.5, len(unique_groups) - 0.5)
     ax.grid(True, axis='y', linestyle=':', alpha=0.5, zorder=1)
 
+    # Control limits are based on Gage R&R standard deviation
     trans = mtransforms.blended_transform_factory(ax.transData, ax.transAxes)
     trans_label = mtransforms.blended_transform_factory(ax.transAxes, ax.transAxes)
 
@@ -175,7 +177,7 @@ def get_stddev_chart(result: MSAResult, ax: plt.Axes):
             fontweight='bold')
 
     ax.set_ylabel("Standard Deviation")
-    ax.set_title(f"Standard Deviation Chart by {', '.join([c.replace('(', '').replace(')', '') for c in group_cols])}")
+    ax.set_title(f"Chart of Cell Standard Deviations by {', '.join(group_cols)}")
     ax.set_xticks([])
     ax.set_xlim(-0.5, len(unique_groups) - 0.5)
     ax.grid(True, axis='y', linestyle=':', alpha=0.5, zorder=1)

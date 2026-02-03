@@ -3,5 +3,6 @@ pandas
 scipy
 statsmodels
 matplotlib
-fpdf
+fpdf2
 PySide6
+pyqtdarktheme

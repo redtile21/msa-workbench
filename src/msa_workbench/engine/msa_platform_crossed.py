@@ -224,7 +224,9 @@ def run_crossed_2factor(
         update_anova_f_test(anova, term_part, ms_part, ms_res, df_part, df_res)
         update_anova_f_test(anova, term_op, ms_op, ms_res, df_op, df_res)
 
-        anova_rows = build_anova_rows(clean_anova_index(anova), ANOVATableRow)
+        anova_rows = build_anova_rows(
+            clean_anova_index(anova), ANOVATableRow, df2, y, config.factor_cols
+        )
 
         sig2_repeat = float(max(0.0, ms_res))
         sig2_part = float(max(0.0, (ms_part - ms_res) / float(n_ops)))
@@ -274,7 +276,9 @@ def run_crossed_2factor(
     update_anova_f_test(anova, term_op, ms_op, ms_int, df_op, df_int)
     update_anova_f_test(anova, term_int, ms_int, ms_res, df_int, df_res)
 
-    anova_rows = build_anova_rows(clean_anova_index(anova), ANOVATableRow)
+    anova_rows = build_anova_rows(
+        clean_anova_index(anova), ANOVATableRow, df2, y, config.factor_cols
+    )
 
     # Raw EMS estimates (do not truncate until after negative-check)
     sig2_repeat_raw = float(ms_res)
@@ -446,7 +450,9 @@ def run_crossed_3factor(
     update_anova_f_test(anova, t_B, ms_B, ms_AB, df_B, df_AB)
     update_anova_f_test(anova, t_C, ms_C, ms_AC, df_C, df_AC)
 
-    anova_rows = build_anova_rows(clean_anova_index(anova), ANOVATableRow)
+    anova_rows = build_anova_rows(
+        clean_anova_index(anova), ANOVATableRow, df2, y, config.factor_cols
+    )
 
     # EMS for balanced 3-factor crossed
     #
@@ -781,7 +787,9 @@ def _reference_anova_crossed(
             anova = anova_lm(ols_model, typ=3)
         except Exception:
             anova = anova_lm(ols_model, typ=2)
-        anova_rows = build_anova_rows(clean_anova_index(anova), ANOVATableRow)
+        anova_rows = build_anova_rows(
+            clean_anova_index(anova), ANOVATableRow, df, y, factors
+        )
         resid = ols_model.resid
     except Exception as e:
         warnings.append(f"Could not generate reference ANOVA table: {e}")

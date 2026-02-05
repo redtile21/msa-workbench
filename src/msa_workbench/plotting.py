@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import matplotlib.transforms as mtransforms
 import pandas as pd
 import re
+import seaborn as sns
 
 from msa_workbench.engine.msa_engine import MSAResult
 
@@ -12,6 +13,7 @@ def _clean_label(val):
 
 def get_variability_chart(result: MSAResult, ax: plt.Axes):
     """Generates the Variability Chart on the given Axes."""
+    sns.set_theme(style="whitegrid")
     ax.clear()
     cfg = result.config
     dfv = result.chart_data.variability.copy()
@@ -45,7 +47,7 @@ def get_variability_chart(result: MSAResult, ax: plt.Axes):
     ucl = grand_mean + 3 * sigma_gage
     lcl = grand_mean - 3 * sigma_gage
 
-    ax.scatter(df_plot['x_pos'], df_plot[y_col], s=40, alpha=0.8, edgecolors='black', zorder=3)
+    sns.scatterplot(data=df_plot, x='x_pos', y=y_col, ax=ax, s=60, alpha=0.8, edgecolor='black', zorder=3)
 
     ax.axhline(grand_mean, color='green', linewidth=1.5, label='Mean', zorder=2)
     ax.axhline(ucl, color='red', linestyle='--', linewidth=1.5, label='UCL', zorder=2)
@@ -63,15 +65,14 @@ def get_variability_chart(result: MSAResult, ax: plt.Axes):
     ax.set_title(f"Variability of {y_col} by {', '.join(group_cols)}")
     ax.set_xticks([])
     ax.set_xlim(-0.5, len(unique_groups) - 0.5)
-    ax.grid(True, axis='y', linestyle=':', alpha=0.5, zorder=1)
+    ax.set_xlabel('') # Remove x_pos label
 
-    # Control limits are based on Gage R&R standard deviation
     trans = mtransforms.blended_transform_factory(ax.transData, ax.transAxes)
     trans_label = mtransforms.blended_transform_factory(ax.transAxes, ax.transAxes)
 
-    y_offset_part = -0.1
-    y_offset_inst = -0.2
-    y_offset_op = -0.3 if inst_col else -0.2
+    y_offset_part = -0.05
+    y_offset_inst = -0.10
+    y_offset_op = -0.15 if inst_col else -0.10
 
     for i, row in unique_groups.iterrows():
         clean_part_label = _clean_label(row[part_col])
@@ -106,11 +107,12 @@ def get_variability_chart(result: MSAResult, ax: plt.Axes):
             ax.axvline(x=last + 0.5, color='black', linestyle='-', linewidth=1.5)
 
     ax.text(-0.01, y_offset_op, op_col, transform=trans_label, ha='right', va='top', fontsize=10, fontweight='bold')
-    ax.figure.subplots_adjust(bottom=0.35 if inst_col else 0.25, top=0.9, right=0.95, left=0.1)
+    ax.figure.tight_layout(pad=3.0)
 
 
 def get_stddev_chart(result: MSAResult, ax: plt.Axes):
     """Generates the Standard Deviation Chart on the given Axes."""
+    sns.set_theme(style="whitegrid")
     ax.clear()
     cfg = result.config
     df_raw = result.chart_data.variability.copy()
@@ -162,8 +164,8 @@ def get_stddev_chart(result: MSAResult, ax: plt.Axes):
     ucl = s_bar * b4
     lcl = s_bar * b3
 
-    ax.plot(df_plot['x_pos'], df_plot['cell_std'], marker='o', linestyle='-', color='blue', alpha=0.8, label='Std Dev',
-            zorder=3)
+    sns.lineplot(data=df_plot, x='x_pos', y='cell_std', marker='o', color='blue', ax=ax, zorder=3)
+    
     ax.axhline(s_bar, color='green', linewidth=1.5, label='Mean', zorder=2)
     ax.axhline(ucl, color='red', linestyle='--', linewidth=1.5, label='UCL', zorder=2)
     ax.axhline(lcl, color='red', linestyle='--', linewidth=1.5, label='LCL', zorder=2)
@@ -180,14 +182,14 @@ def get_stddev_chart(result: MSAResult, ax: plt.Axes):
     ax.set_title(f"Chart of Cell Standard Deviations by {', '.join(group_cols)}")
     ax.set_xticks([])
     ax.set_xlim(-0.5, len(unique_groups) - 0.5)
-    ax.grid(True, axis='y', linestyle=':', alpha=0.5, zorder=1)
+    ax.set_xlabel('') # Remove x_pos label
 
     trans = mtransforms.blended_transform_factory(ax.transData, ax.transAxes)
     trans_label = mtransforms.blended_transform_factory(ax.transAxes, ax.transAxes)
 
-    y_offset_part = -0.1
-    y_offset_inst = -0.2
-    y_offset_op = -0.3 if inst_col else -0.2
+    y_offset_part = -0.05
+    y_offset_inst = -0.10
+    y_offset_op = -0.15 if inst_col else -0.10
 
     for i, row in unique_groups.iterrows():
         clean_part_label = _clean_label(row[part_col])
@@ -217,4 +219,4 @@ def get_stddev_chart(result: MSAResult, ax: plt.Axes):
         if last < len(unique_groups) - 1:
             ax.axvline(x=last + 0.5, color='black', linestyle='-', linewidth=1.5)
     ax.text(-0.01, y_offset_op, op_col, transform=trans_label, ha='right', va='top', fontsize=10, fontweight='bold')
-    ax.figure.subplots_adjust(bottom=0.35 if inst_col else 0.25, top=0.9, right=0.95, left=0.1)
+    ax.figure.tight_layout(pad=3.0)

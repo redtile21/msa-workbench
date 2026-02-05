@@ -1,4 +1,4 @@
-import qdarktheme
+from qt_material import apply_stylesheet
 from PySide6.QtGui import QColor
 
 # Define colors for StatusBadge to ensure it works with qdarktheme
@@ -12,4 +12,4 @@ def apply_theme(app):
     """
     Applies a theme to the application.
     """
-    app.setStyleSheet(qdarktheme.load_stylesheet("dark"))
+    apply_stylesheet(app, theme='dark_blue.xml')

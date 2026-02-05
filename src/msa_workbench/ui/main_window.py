@@ -25,16 +25,17 @@ from PySide6.QtWidgets import (
     QScrollArea
 )
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QPixmap
 
 from msa_workbench.ui.dataframe_model import DataFrameModel
 from msa_workbench.engine.msa_engine import MSAConfig, run_msa, MSAResult
-from msa_workbench.ui.widgets.mpl_canvas import MplCanvas
 from msa_workbench.ui.widgets.status_badge import StatusBadge
 from msa_workbench.ui.widgets.indentation_delegate import IndentationDelegate
 from msa_workbench.reporting.pdf_report import save_pdf_report
 from msa_workbench.plotting import get_variability_chart, get_stddev_chart
 from msa_workbench.reporting.analysis_notes import get_variation_impact_analysis
 from msa_workbench.ui.pages.builder_page import BuilderPage
+from msa_workbench.ui.pages.charts_page import ChartsPage
 
 
 class MainWindow(QMainWindow):
@@ -72,10 +73,14 @@ class MainWindow(QMainWindow):
         # --- Left panel for controls ---
         controls_widget = QWidget()
         controls_layout = QVBoxLayout(controls_widget)
+        controls_layout.setSpacing(10)
+        controls_layout.setContentsMargins(10, 10, 10, 10)
         
         # --- Right panel for data preview ---
         preview_widget = QWidget()
         preview_layout = QVBoxLayout(preview_widget)
+        preview_layout.setSpacing(10)
+        preview_layout.setContentsMargins(10, 10, 10, 10)
 
         splitter.addWidget(controls_widget)
         splitter.addWidget(preview_widget)
@@ -84,6 +89,7 @@ class MainWindow(QMainWindow):
         # --- Data Input Group ---
         data_group = QGroupBox("Data Input")
         data_layout = QVBoxLayout(data_group)
+        data_layout.setSpacing(10)
         self.load_button = QPushButton("Load CSV...")
         self.load_button.clicked.connect(self.load_csv)
         self.df_info_label = QLabel("Load a CSV file to begin.")
@@ -94,6 +100,8 @@ class MainWindow(QMainWindow):
         # --- Model Configuration Group ---
         model_group = QGroupBox("Model Configuration")
         model_layout = QFormLayout(model_group)
+        model_layout.setVerticalSpacing(15)
+        model_layout.setHorizontalSpacing(20)
         self.response_combo = QComboBox()
         self.response_combo.setToolTip("Select the measurement column.")
         self.response_suggestion_label = QLabel("Suggested")
@@ -135,6 +143,8 @@ class MainWindow(QMainWindow):
         # --- Specification Limits Group ---
         spec_group = QGroupBox("Specification Limits (Optional)")
         spec_layout = QFormLayout(spec_group)
+        spec_layout.setVerticalSpacing(15)
+        spec_layout.setHorizontalSpacing(20)
         self.lsl_input = QLineEdit()
         self.lsl_input.setToolTip("Lower Specification Limit.\nUsed with USL to calculate %Tolerance.")
         spec_layout.addRow("LSL:", self.lsl_input)
@@ -151,6 +161,7 @@ class MainWindow(QMainWindow):
         # --- Actions Group ---
         actions_group = QGroupBox("Actions")
         actions_layout = QVBoxLayout(actions_group)
+        actions_layout.setSpacing(10)
         self.run_button = QPushButton("Run Analysis")
         self.run_button.setProperty("cssClass", "primary")
         self.run_button.clicked.connect(self.run_analysis)
@@ -186,6 +197,8 @@ class MainWindow(QMainWindow):
 
         # Summary Tab
         summary_layout = QFormLayout(summary_tab)
+        summary_layout.setVerticalSpacing(15)
+        summary_layout.setHorizontalSpacing(20)
         self.grr_sv_label = QLabel("N/A")
         self.grr_tol_label = QLabel("N/A")
         self.ndc_label = QLabel("N/A")
@@ -197,12 +210,14 @@ class MainWindow(QMainWindow):
 
         # Warnings Tab
         warnings_layout = QVBoxLayout(warnings_tab)
+        warnings_layout.setSpacing(10)
         self.warnings_text = QTextEdit()
         self.warnings_text.setReadOnly(True)
         warnings_layout.addWidget(self.warnings_text)
 
         # Var Comp Tab
         var_comp_layout = QVBoxLayout(var_comp_tab)
+        var_comp_layout.setSpacing(10)
         var_comp_title = QLabel("Variance Components (Study Variation Breakdown)")
         var_comp_title.setStyleSheet("font-weight: bold;")
         var_comp_layout.addWidget(var_comp_title)
@@ -217,6 +232,7 @@ class MainWindow(QMainWindow):
 
         # ANOVA Tab
         anova_layout = QVBoxLayout(anova_tab)
+        anova_layout.setSpacing(10)
         anova_title = QLabel("ANOVA Table (Model Fit)")
         anova_title.setStyleSheet("font-weight: bold;")
         anova_layout.addWidget(anova_title)
@@ -235,14 +251,15 @@ class MainWindow(QMainWindow):
         
         charts_content = QWidget()
         charts_content_layout = QVBoxLayout(charts_content)
+        charts_content_layout.setSpacing(10)
         scroll_area.setWidget(charts_content)
 
-        self.variability_chart_canvas = MplCanvas(self)
-        self.variability_chart_canvas.setMinimumHeight(800)
-        self.stddev_chart_canvas = MplCanvas(self)
-        self.stddev_chart_canvas.setMinimumHeight(800)
-        charts_content_layout.addWidget(self.variability_chart_canvas)
-        charts_content_layout.addWidget(self.stddev_chart_canvas)
+        self.variability_chart_label = QLabel()
+        self.variability_chart_label.setAlignment(Qt.AlignCenter)
+        self.stddev_chart_label = QLabel()
+        self.stddev_chart_label.setAlignment(Qt.AlignCenter)
+        charts_content_layout.addWidget(self.variability_chart_label)
+        charts_content_layout.addWidget(self.stddev_chart_label)
         
         # Export button
         self.export_button = QPushButton("Export PDF...")
@@ -464,21 +481,41 @@ class MainWindow(QMainWindow):
         self.anova_table.horizontalHeader().setStretchLastSection(True)
 
         # Charts
-        # Calculate dynamic width based on number of groups (approx 60px per group, min 800px)
         n_groups = len(self.result.chart_data.stddev) if self.result.chart_data and self.result.chart_data.stddev is not None else 10
         plot_width = max(800, n_groups * 60)
-        self.variability_chart_canvas.setMinimumWidth(plot_width)
-        self.stddev_chart_canvas.setMinimumWidth(plot_width)
-
-        self.variability_chart_canvas.figure.clear()
-        ax_var = self.variability_chart_canvas.figure.add_subplot(111)
+        plot_height = int(plot_width * (2 / 3)) # 3:2 aspect ratio
+        
+        # Helper function to render a matplotlib figure to QPixmap
+        def figure_to_pixmap(fig):
+            import io
+            buf = io.BytesIO()
+            fig.savefig(buf, format='png', dpi=100)
+            buf.seek(0)
+            pixmap = QPixmap()
+            pixmap.loadFromData(buf.getvalue())
+            buf.close()
+            return pixmap
+        
+        # Create and render variability chart
+        import matplotlib.pyplot as plt
+        fig_var = plt.figure(figsize=(plot_width / 100, plot_height / 100), dpi=100)
+        ax_var = fig_var.add_subplot(111)
         get_variability_chart(self.result, ax_var)
-        self.variability_chart_canvas.draw()
-
-        self.stddev_chart_canvas.figure.clear()
-        ax_std = self.stddev_chart_canvas.figure.add_subplot(111)
+        fig_var.tight_layout(pad=2.0)
+        pixmap_var = figure_to_pixmap(fig_var)
+        self.variability_chart_label.setPixmap(pixmap_var)
+        self.variability_chart_label.setFixedSize(pixmap_var.size())
+        plt.close(fig_var)
+        
+        # Create and render stddev chart
+        fig_std = plt.figure(figsize=(plot_width / 100, plot_height / 100), dpi=100)
+        ax_std = fig_std.add_subplot(111)
         get_stddev_chart(self.result, ax_std)
-        self.stddev_chart_canvas.draw()
+        fig_std.tight_layout(pad=2.0)
+        pixmap_std = figure_to_pixmap(fig_std)
+        self.stddev_chart_label.setPixmap(pixmap_std)
+        self.stddev_chart_label.setFixedSize(pixmap_std.size())
+        plt.close(fig_std)
 
 
     def export_pdf(self):

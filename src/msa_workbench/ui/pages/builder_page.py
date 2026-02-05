@@ -14,7 +14,9 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QGroupBox,
     QSplitter,
-    QFileDialog
+    QFileDialog,
+    QScrollArea,
+    QSizePolicy
 )
 from PySide6.QtCore import Qt
 import pandas as pd
@@ -41,16 +43,23 @@ class BuilderPage(QWidget):
         self.layout().addWidget(main_splitter)
 
         # --- Left Panel (Controls) ---
+        controls_scroll_area = QScrollArea()
+        controls_scroll_area.setWidgetResizable(True)
         controls_panel = QWidget()
+        controls_scroll_area.setWidget(controls_panel)
         controls_layout = QVBoxLayout(controls_panel)
-        main_splitter.addWidget(controls_panel)
+        controls_layout.setSpacing(10)
+        controls_layout.setContentsMargins(10, 10, 10, 10)
+        main_splitter.addWidget(controls_scroll_area)
 
         # --- Right Panel (Preview) ---
         preview_panel = QWidget()
         preview_layout = QVBoxLayout(preview_panel)
+        preview_layout.setSpacing(10)
+        preview_layout.setContentsMargins(10, 10, 10, 10)
         main_splitter.addWidget(preview_panel)
         
-        main_splitter.setSizes([400, 600])
+        main_splitter.setSizes([450, 600])
 
         # Controls
         self._create_factor_widgets(controls_layout)
@@ -66,13 +75,16 @@ class BuilderPage(QWidget):
     def _create_factor_widgets(self, layout):
         group = QGroupBox("Factors (1-4)")
         form_layout = QFormLayout(group)
+        form_layout.setVerticalSpacing(15)
+        form_layout.setHorizontalSpacing(20)
         
         self.factor_widgets = []
         for i in range(4):
             name_edit = QLineEdit()
             levels_edit = QTextEdit()
             levels_edit.setPlaceholderText("One level per line")
-            levels_edit.setFixedHeight(80)
+            levels_edit.setMinimumHeight(60)
+            levels_edit.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
             
             form_layout.addRow(f"Factor {i+1} Name:", name_edit)
             form_layout.addRow(f"Factor {i+1} Levels:", levels_edit)
@@ -84,6 +96,8 @@ class BuilderPage(QWidget):
         # Replicates
         replicates_group = QGroupBox("Replicates")
         replicates_layout = QFormLayout(replicates_group)
+        replicates_layout.setVerticalSpacing(15)
+        replicates_layout.setHorizontalSpacing(20)
         self.replicates_spinbox = QSpinBox()
         self.replicates_spinbox.setMinimum(1)
         self.replicates_spinbox.setValue(3)
@@ -93,6 +107,7 @@ class BuilderPage(QWidget):
         # Output options
         output_group = QGroupBox("Output Options")
         output_layout = QVBoxLayout(output_group)
+        output_layout.setSpacing(10)
         self.sort_left_to_right_radio = QRadioButton("Left-to-right (by factor)")
         self.sort_randomized_radio = QRadioButton("Randomized")
         self.sort_left_to_right_radio.setChecked(True)
@@ -104,6 +119,7 @@ class BuilderPage(QWidget):
         self.seed_checkbox.toggled.connect(self.seed_spinbox.setEnabled)
         
         seed_layout = QHBoxLayout()
+        seed_layout.setSpacing(10)
         seed_layout.addWidget(self.seed_checkbox)
         seed_layout.addWidget(self.seed_spinbox)
 
@@ -114,6 +130,7 @@ class BuilderPage(QWidget):
         
         # Buttons
         button_layout = QHBoxLayout()
+        button_layout.setSpacing(10)
         self.generate_button = QPushButton("Generate / Update Table")
         self.generate_button.setProperty("cssClass", "primary")
         self.generate_button.clicked.connect(self.generate_table)

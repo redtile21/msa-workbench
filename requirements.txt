@@ -5,4 +5,5 @@ statsmodels
 matplotlib
 fpdf2
 PySide6
-pyqtdarktheme
+qt-material==2.17
+seaborn

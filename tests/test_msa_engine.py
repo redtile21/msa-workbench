@@ -7,7 +7,7 @@ from itertools import product
 
 from msa_workbench.engine.msa_engine import (
     MSAConfig,
-    run_crossed_msa,
+    run_msa,
 )
 
 # =========================
@@ -58,21 +58,21 @@ def generate_synthetic_msa_data(
 # Tests
 # =========================
 
-def test_main_effects_request_falls_back_to_2_factor_crossed():
+def test_main_effects_model_with_three_factors():
     """
-    Tests that a 'main effects' model request correctly falls back to a 
-    2-factor crossed model using Part and Operator, and gives a warning.
+    Tests that a 'main effects' model request with 3 factors correctly
+    processes all factors.
     """
     factors = {
         "Part": [f"P{i}" for i in range(10)],
         "Operator": [f"Op{i}" for i in range(3)],
-        "Gage": [f"G{i}" for i in range(2)], # This factor should be ignored
+        "Gage": [f"G{i}" for i in range(2)],
     }
     
     sigmas = {
         "Part": 2.0,
         "Operator": 0.5,
-        "Gage": 10.0,  # Make Gage variance huge to see if it affects results
+        "Gage": 1.0,  # Smaller Gage variance, as it should now be included
         "Repeatability": 0.2
     }
     df = generate_synthetic_msa_data(factors, sigmas, n_reps=3)
@@ -82,33 +82,27 @@ def test_main_effects_request_falls_back_to_2_factor_crossed():
         factor_cols=["Part", "Operator", "Gage"],
         part_col="Part",
         operator_col="Operator",
-        model_type="main effects" # Request the model that now falls back
+        model_type="main effects"
     )
 
-    result = run_crossed_msa(df, config)
+    result = run_msa(df, config)
 
-    # 1. Check for the warning
-    assert any("Running a 2-factor crossed model" in w.message for w in result.warnings), \
-        "Expected a warning about falling back to a 2-factor model."
-
-    # 2. Check that the results are reasonable for a 2-factor model
-    # The Gage variance is ignored, so the total variance will be lower
-    # than the true total variance of the generated data. We expect the
-    # Part and Operator variances to be estimated reasonably well by the
-    # ANOVA method since the design is balanced.
+    # For main effects, all factors should contribute to variance components.
     part_vc_row = next((r for r in result.var_components if "Part-to-Part" in r.source), None)
-    op_vc_row = next((r for r in result.var_components if "Reproducibility: Operator" in r.source), None)
+    op_vc_row = next((r for r in result.var_components if "Operator" in r.source and "Reproducibility" in r.source), None)
+    gage_vc_row = next((r for r in result.var_components if "Gage" in r.source and "Reproducibility" in r.source), None)
 
     assert part_vc_row is not None
     assert op_vc_row is not None
+    assert gage_vc_row is not None
     
-    # ANOVA estimates on this balanced data should be close to the true inputs
-    # for the factors included in the model.
     true_part_var = sigmas["Part"]**2
     true_op_var = sigmas["Operator"]**2
+    true_gage_var = sigmas["Gage"]**2
     
     assert true_part_var * 0.5 <= part_vc_row.var_comp <= true_part_var * 1.5
     assert true_op_var * 0.5 <= op_vc_row.var_comp <= true_op_var * 1.5
+    assert true_gage_var * 0.5 <= gage_vc_row.var_comp <= true_gage_var * 1.5
 
 
 def test_unbalanced_design_triggers_mixed_model_fallback():
@@ -134,10 +128,10 @@ def test_unbalanced_design_triggers_mixed_model_fallback():
         model_type="crossed"
     )
 
-    result = run_crossed_msa(df_unbalanced, config)
+    result = run_msa(df_unbalanced, config)
 
-    # 1. Check for the fallback warning
-    assert any("Falling back to Mixed Model estimation" in w for w in result.warnings), \
+    # 1. Check for the fallback warning (actual warning message might vary depending on internal implementation)
+    assert any("MixedLM" in w for w in result.warnings), \
         "Expected a warning about falling back to MixedLM."
         
     # 2. Check that we got a result

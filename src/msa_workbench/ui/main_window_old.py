@@ -23,11 +23,10 @@ from PySide6.QtWidgets import (
     QSplitter,
     QTextEdit,
     QHeaderView,
-    QScrollArea,
-    QAbstractScrollArea
+    QScrollArea
 )
 from PySide6.QtCore import Qt, QTimer, QEvent
-from PySide6.QtGui import QPixmap, QFontMetrics
+from PySide6.QtGui import QPixmap
 
 from msa_workbench.ui.dataframe_model import DataFrameModel
 from msa_workbench.engine.msa_engine import MSAConfig, run_msa, MSAResult
@@ -300,7 +299,7 @@ class MainWindow(QMainWindow):
         self.stddev_chart_label.setAlignment(Qt.AlignCenter)
         charts_content_layout.addWidget(self.variability_chart_label)
         charts_content_layout.addWidget(self.stddev_chart_label)
-        # Export buttons
+                # Export buttons
         self.export_button = QPushButton("Export PDF...")
         self.export_button.clicked.connect(self.export_pdf)
         self.export_button.setEnabled(False)
@@ -323,7 +322,6 @@ class MainWindow(QMainWindow):
                 self.df = pd.read_csv(path)
                 self.df_model.setDataFrame(self.df)
                 self.df_info_label.setText(f"Loaded: {self.df.shape[0]} rows, {self.df.shape[1]} columns")
-                self._configure_table_view_common(self.table_view, stretch_last=True)
                 self._update_config_options()
                 self.run_button.setEnabled(True)
                 self._auto_populate_fields()
@@ -466,46 +464,6 @@ class MainWindow(QMainWindow):
         if val is None or (isinstance(val, (int, float)) and np.isnan(val)):
             return "N/A"
         return f"{val:.2f}%"
-
-    
-    def _autosize_table_columns(self, view: QTableView, *, stretch_last: bool = True, padding_px: int = 24):
-        """Autosize columns so BOTH cell contents and header text fit."""
-        if view is None:
-            return
-        model = view.model()
-        if model is None:
-            return
-
-        header = view.horizontalHeader()
-
-        # First: size to cell contents
-        view.resizeColumnsToContents()
-
-        # Second: ensure header text fits
-        fm = QFontMetrics(header.font())
-        for col in range(model.columnCount()):
-            header_text = str(model.headerData(col, Qt.Horizontal, Qt.DisplayRole) or "")
-            header_w = fm.horizontalAdvance(header_text) + padding_px
-            current_w = view.columnWidth(col)
-            view.setColumnWidth(col, max(current_w, header_w))
-
-        header.setStretchLastSection(bool(stretch_last))
-
-    def _configure_table_view_common(self, view: QTableView, *, stretch_last: bool = True):
-        """Common QTableView settings + robust column sizing."""
-        if view is None:
-            return
-
-        view.setWordWrap(True)
-        view.setAlternatingRowColors(True)
-        view.setSizeAdjustPolicy(QAbstractScrollArea.AdjustToContents)
-
-        h = view.horizontalHeader()
-        h.setTextElideMode(Qt.ElideNone)   # avoid "..." in headers
-        h.setMinimumSectionSize(80)        # prevent overly-narrow columns
-        h.setSectionResizeMode(QHeaderView.Interactive)
-
-        self._autosize_table_columns(view, stretch_last=stretch_last)
 
     def _get_summary_tables_data(self):
         if self.result is None:
@@ -653,11 +611,17 @@ class MainWindow(QMainWindow):
 
         # Populate new summary tables
         df_table_a, df_table_b = self._get_summary_tables_data()
+        self.summary_table_a.horizontalHeader().setWordWrap(True)
         self.summary_model_a.setDataFrame(df_table_a)
-        self._configure_table_view_common(self.summary_table_a, stretch_last=True)
+        self.summary_table_a.resizeColumnsToContents()
+        self.summary_table_a.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.summary_table_a.horizontalHeader().setStretchLastSection(True)
 
+        self.summary_table_b.horizontalHeader().setWordWrap(True)
         self.summary_model_b.setDataFrame(df_table_b)
-        self._configure_table_view_common(self.summary_table_b, stretch_last=True)
+        self.summary_table_b.resizeColumnsToContents()
+        self.summary_table_b.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.summary_table_b.horizontalHeader().setStretchLastSection(True)
 
         # Warnings
         self.warnings_text.setText("\n".join(self.result.warnings) or "No warnings.")
@@ -673,8 +637,12 @@ class MainWindow(QMainWindow):
             "pct_study_var": "% Study Var",
             "pct_tolerance": "% Tolerance",
         }, inplace=True)
+        self.var_comp_table.horizontalHeader().setWordWrap(True)
         self.var_comp_model.setDataFrame(var_comp_df)
-        self._configure_table_view_common(self.var_comp_table, stretch_last=True)
+        self.var_comp_table.resizeColumnsToContents()
+        self.var_comp_table.horizontalHeader().setWordWrap(True) # Added this line
+        self.var_comp_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.var_comp_table.horizontalHeader().setStretchLastSection(True)
         
         impacts = get_variation_impact_analysis(self.result)
         impact_html = ""
@@ -699,9 +667,11 @@ class MainWindow(QMainWindow):
             if pd.api.types.is_numeric_dtype(anova_df[col]):
                 anova_df[col] = anova_df[col].apply(self._format_sig)
         self.anova_model.setDataFrame(anova_df)
-        self._configure_table_view_common(self.anova_table, stretch_last=True)
+        self.anova_table.resizeColumnsToContents()
+        self.anova_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.anova_table.horizontalHeader().setStretchLastSection(True)
 
-        # Charts
+                # Charts
         self._schedule_chart_render()
 
 
@@ -759,7 +729,7 @@ class MainWindow(QMainWindow):
     @staticmethod
     def _figure_to_pixmap(fig, dpi: int = 100):
         import io
-        from PySide6.QtGui import QPixmap, QFontMetrics
+        from PySide6.QtGui import QPixmap
         buf = io.BytesIO()
         fig.savefig(buf, format='png', dpi=dpi)
         buf.seek(0)

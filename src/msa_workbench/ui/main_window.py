@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QScrollArea
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer, QEvent
 from PySide6.QtGui import QPixmap
 
 from msa_workbench.ui.dataframe_model import DataFrameModel
@@ -47,6 +47,12 @@ class MainWindow(QMainWindow):
         # State
         self.df = None
         self.result: MSAResult | None = None
+
+        # Timer for debounced chart rendering
+        self._charts_rerender_timer = QTimer(self)
+        self._charts_rerender_timer.setSingleShot(True)
+        self._charts_rerender_timer.timeout.connect(self._render_charts)
+        self._last_chart_render_state = None
 
         # Main layout
         self.main_tabs = QTabWidget()
@@ -195,6 +201,8 @@ class MainWindow(QMainWindow):
         self.results_tabs.addTab(anova_tab, "ANOVA")
         self.results_tabs.addTab(charts_tab, "Charts")
 
+        self.results_tabs.currentChanged.connect(self._on_results_tab_changed)
+
         # Summary Tab
         summary_layout = QFormLayout(summary_tab)
         summary_layout.setVerticalSpacing(15)
@@ -244,24 +252,23 @@ class MainWindow(QMainWindow):
 
         # Charts Tab
         charts_layout = QVBoxLayout(charts_tab)
-        
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        charts_layout.addWidget(scroll_area)
-        
+        self.charts_scroll_area = QScrollArea()
+        self.charts_scroll_area.setWidgetResizable(True)
+        charts_layout.addWidget(self.charts_scroll_area)
+
         charts_content = QWidget()
         charts_content_layout = QVBoxLayout(charts_content)
         charts_content_layout.setSpacing(10)
-        scroll_area.setWidget(charts_content)
-
+        charts_content_layout.setAlignment(Qt.AlignHCenter | Qt.AlignTop)
+        self.charts_scroll_area.setWidget(charts_content)
+        self.charts_scroll_area.viewport().installEventFilter(self)
         self.variability_chart_label = QLabel()
         self.variability_chart_label.setAlignment(Qt.AlignCenter)
         self.stddev_chart_label = QLabel()
         self.stddev_chart_label.setAlignment(Qt.AlignCenter)
         charts_content_layout.addWidget(self.variability_chart_label)
         charts_content_layout.addWidget(self.stddev_chart_label)
-        
-        # Export button
+                # Export button
         self.export_button = QPushButton("Export PDF...")
         self.export_button.clicked.connect(self.export_pdf)
         self.export_button.setEnabled(False)
@@ -480,39 +487,130 @@ class MainWindow(QMainWindow):
         self.anova_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
         self.anova_table.horizontalHeader().setStretchLastSection(True)
 
-        # Charts
-        n_groups = len(self.result.chart_data.stddev) if self.result.chart_data and self.result.chart_data.stddev is not None else 10
-        plot_width = max(800, n_groups * 60)
-        plot_height = int(plot_width * (2 / 3)) # 3:2 aspect ratio
-        
-        # Helper function to render a matplotlib figure to QPixmap
-        def figure_to_pixmap(fig):
-            import io
-            buf = io.BytesIO()
-            fig.savefig(buf, format='png', dpi=100)
-            buf.seek(0)
-            pixmap = QPixmap()
-            pixmap.loadFromData(buf.getvalue())
-            buf.close()
-            return pixmap
-        
-        # Create and render variability chart
+                # Charts
+        self._schedule_chart_render()
+
+
+    def eventFilter(self, obj, event):
+        # Debounced re-render on viewport resize. This preserves scroll wheel behavior because
+        # we still render to PNG/QPixmap rather than embedding a Matplotlib canvas widget.
+        if hasattr(self, "charts_scroll_area") and obj is self.charts_scroll_area.viewport():
+            if event.type() == QEvent.Resize:
+                self._schedule_chart_render(delay_ms=120)
+        return super().eventFilter(obj, event)
+
+    def _on_results_tab_changed(self, idx: int):
+        # Only render when the Charts tab is active (helps avoid rendering when viewport is 0px wide).
+        try:
+            if self.results_tabs.tabText(idx) == "Charts":
+                self._schedule_chart_render(delay_ms=0)
+        except Exception:
+            pass
+
+    def _schedule_chart_render(self, delay_ms: int = 0):
+        if self.result is None:
+            return
+        if not hasattr(self, "_charts_rerender_timer") or self._charts_rerender_timer is None:
+            return
+        self._charts_rerender_timer.start(max(0, int(delay_ms)))
+
+    def _get_chart_group_count(self) -> int:
+        # Match the x-axis grouping logic used by the plotting functions:
+        # operator (+ optional extra factor like instrument) + part
+        try:
+            if self.result is None or self.result.chart_data is None or self.result.chart_data.variability is None:
+                return 10
+            cfg = self.result.config
+            dfv = self.result.chart_data.variability
+
+            part_col = cfg.part_col
+            op_col = cfg.operator_col
+
+            other_factors = [f for f in cfg.factor_cols if f not in (part_col, op_col) and f in dfv.columns]
+            inst_col = other_factors[0] if other_factors else None
+
+            cols = [op_col]
+            if inst_col:
+                cols.append(inst_col)
+            cols.append(part_col)
+
+            cols = [c for c in cols if c in dfv.columns]
+            if not cols:
+                return 10
+
+            return int(dfv[cols].drop_duplicates().shape[0])
+        except Exception:
+            return 10
+
+    @staticmethod
+    def _figure_to_pixmap(fig, dpi: int = 100):
+        import io
+        from PySide6.QtGui import QPixmap
+        buf = io.BytesIO()
+        fig.savefig(buf, format='png', dpi=dpi)
+        buf.seek(0)
+        pixmap = QPixmap()
+        pixmap.loadFromData(buf.getvalue())
+        buf.close()
+        return pixmap
+
+    def _render_charts(self):
+        if self.result is None:
+            return
+        if not hasattr(self, "charts_scroll_area"):
+            return
+
+        viewport_w = self.charts_scroll_area.viewport().width()
+        if viewport_w <= 50:
+            # If not visible yet, don't render at a bogus size.
+            return
+
+        n_groups = self._get_chart_group_count()
+
+        # Sizing rules:
+        # - React to viewport width
+        # - Ensure enough width per x-group
+        # - Always wider than tall (no fixed ratio required)
+        dpi = 100
+        px_per_group = 60
+        min_width_px = 600
+        max_width_px = 3200
+        side_padding_px = 60
+
+        available_w = max(300, viewport_w - side_padding_px)
+        width_px = max(min_width_px, available_w, n_groups * px_per_group)
+        width_px = min(width_px, max_width_px)
+
+        # Height: enforce "wider than tall" by targeting ~0.45*width and clamping
+        min_height_px = 360
+        max_height_px = 900
+        height_px = int(width_px * 0.45)
+        height_px = max(min_height_px, min(height_px, max_height_px))
+        height_px = min(height_px, width_px - 1)
+
+        state = (width_px, height_px, n_groups, id(self.result))
+        if state == getattr(self, "_last_chart_render_state", None):
+            return
+        self._last_chart_render_state = state
+
         import matplotlib.pyplot as plt
-        fig_var = plt.figure(figsize=(plot_width / 100, plot_height / 100), dpi=100)
+
+        # Variability chart
+        fig_var = plt.figure(figsize=(width_px / dpi, height_px / dpi), dpi=dpi)
         ax_var = fig_var.add_subplot(111)
         get_variability_chart(self.result, ax_var)
         fig_var.tight_layout(pad=2.0)
-        pixmap_var = figure_to_pixmap(fig_var)
+        pixmap_var = self._figure_to_pixmap(fig_var, dpi=dpi)
         self.variability_chart_label.setPixmap(pixmap_var)
         self.variability_chart_label.setFixedSize(pixmap_var.size())
         plt.close(fig_var)
-        
-        # Create and render stddev chart
-        fig_std = plt.figure(figsize=(plot_width / 100, plot_height / 100), dpi=100)
+
+        # Stddev chart
+        fig_std = plt.figure(figsize=(width_px / dpi, height_px / dpi), dpi=dpi)
         ax_std = fig_std.add_subplot(111)
         get_stddev_chart(self.result, ax_std)
         fig_std.tight_layout(pad=2.0)
-        pixmap_std = figure_to_pixmap(fig_std)
+        pixmap_std = self._figure_to_pixmap(fig_std, dpi=dpi)
         self.stddev_chart_label.setPixmap(pixmap_std)
         self.stddev_chart_label.setFixedSize(pixmap_std.size())
         plt.close(fig_std)

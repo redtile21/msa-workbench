@@ -49,6 +49,29 @@ def get_variability_chart(result: MSAResult, ax: plt.Axes):
 
     sns.scatterplot(data=df_plot, x='x_pos', y=y_col, ax=ax, s=60, alpha=0.8, edgecolor='black', zorder=3)
 
+    # --- Error bars: SEM (standard error of the mean) per x-group ---
+    stats = (
+        df_plot.groupby('x_pos', observed=True)[y_col]
+        .agg(mean='mean', std='std', n='count')
+        .reset_index()
+    )
+    stats['sem'] = stats['std'] / (stats['n'] ** 0.5)
+    # If a group has n=1 then std/sem will be NaN; treat as 0 so plotting is robust.
+    stats['sem'] = stats['sem'].fillna(0.0)
+
+    ax.errorbar(
+        stats['x_pos'],
+        stats['mean'],
+        yerr=stats['sem'],
+        fmt='o',
+        markersize=4,
+        color='black',
+        ecolor='black',
+        elinewidth=1.0,
+        capsize=3,
+        zorder=4,
+    )
+
     ax.axhline(grand_mean, color='green', linewidth=1.5, label='Mean', zorder=2)
     ax.axhline(ucl, color='red', linestyle='--', linewidth=1.5, label='UCL', zorder=2)
     ax.axhline(lcl, color='red', linestyle='--', linewidth=1.5, label='LCL', zorder=2)
@@ -107,7 +130,7 @@ def get_variability_chart(result: MSAResult, ax: plt.Axes):
             ax.axvline(x=last + 0.5, color='black', linestyle='-', linewidth=1.5)
 
     ax.text(-0.01, y_offset_op, op_col, transform=trans_label, ha='right', va='top', fontsize=10, fontweight='bold')
-    ax.figure.tight_layout(pad=3.0)
+
 
 
 def get_stddev_chart(result: MSAResult, ax: plt.Axes):
@@ -219,4 +242,3 @@ def get_stddev_chart(result: MSAResult, ax: plt.Axes):
         if last < len(unique_groups) - 1:
             ax.axvline(x=last + 0.5, color='black', linestyle='-', linewidth=1.5)
     ax.text(-0.01, y_offset_op, op_col, transform=trans_label, ha='right', va='top', fontsize=10, fontweight='bold')
-    ax.figure.tight_layout(pad=3.0)
